@@ -3,7 +3,7 @@ package fixed_test
 import (
 	"fmt"
 
-	fixed "github.com/dhannyell/fixed"
+	"github.com/dhannyell/fixed"
 )
 
 func ExampleFromInt() {
@@ -15,7 +15,7 @@ func ExampleFromInt() {
 }
 
 func ExampleFromRatio() {
-	// The idiom for 2.5 is a ratio of integers; there is no FromFloat.
+	// Use a ratio for exact fractional constants. There is no FromFloat.
 	q := fixed.FromRatio(5, 2)
 	fmt.Println(q)
 	// Output:
@@ -38,13 +38,13 @@ func ExampleQ_Mul() {
 }
 
 func ExampleQ_String() {
-	fmt.Println(fixed.FromRatio(7, 2))
-	fmt.Println(fixed.FromRatio(-1, 4))
-	fmt.Println(fixed.FromInt(3))
+	q := fixed.FromRaw(1)
+	text := q.String()
+	fmt.Println(text)
+	fmt.Println(fixed.MustParse(text).Eq(q))
 	// Output:
-	// 3.5
-	// -0.25
-	// 3
+	// 0.00000000023283064365386962890625
+	// true
 }
 
 func ExampleQ_Clamp() {

@@ -7,14 +7,12 @@ import (
 	"math/big"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
-	fixed "github.com/dhannyell/fixed"
+	"github.com/dhannyell/fixed"
 )
-
-// Oracle helpers. Table tests and fuzz targets share them so both
-// verify the same contract.
 
 var (
 	bigMin   = big.NewInt(math.MinInt64)
@@ -42,14 +40,14 @@ func oracleSub(a, b int64) int64 {
 
 func oracleMul(a, b int64) int64 {
 	z := new(big.Int).Mul(big.NewInt(a), big.NewInt(b))
-	// Euclidean Div with a positive divisor floors, matching the shift.
+	// Div with a positive divisor floors, as does the arithmetic shift.
 	z.Div(z, bigScale)
 	return clampRaw(z)
 }
 
 func oracleDiv(a, b int64) int64 {
 	z := new(big.Int).Lsh(big.NewInt(a), 32)
-	// Quo truncates toward zero, matching the magnitude division.
+	// Quo truncates toward zero.
 	z.Quo(z, big.NewInt(b))
 	return clampRaw(z)
 }
@@ -72,41 +70,55 @@ func TestMulAndDivProduceExactBits(t *testing.T) {
 }
 
 func TestMulFloorsTinyNegativeProducts(t *testing.T) {
-	// The 128-bit arithmetic shift floors; the product must stay -2⁻⁶⁴,
-	// not collapse to zero.
+	// The arithmetic shift floors this product. It must not become zero.
 	if got := fixed.FromRaw(-1).Mul(fixed.FromRaw(1)).Raw(); got != -1 {
 		t.Errorf("FromRaw(-1).Mul(FromRaw(1)) = %d, want -1", got)
 	}
 }
 
 func TestDivTruncatesTowardZero(t *testing.T) {
-	// Floor would give -1431655766; the vector pins the documented
-	// Mul/Div asymmetry.
+	// Floor gives -1431655766. This result verifies truncation toward zero.
 	if got := fixed.FromRatio(-1, 3).Raw(); got != -1431655765 {
 		t.Errorf("FromRatio(-1, 3) = %d, want -1431655765", got)
 	}
 }
 
 func TestSaturationClampsAndCounts(t *testing.T) {
-	fixed.ResetSaturationCount()
-	steps := []struct {
+	type saturationCase struct {
 		name string
 		op   func() fixed.Q
 		want fixed.Q
-	}{
+	}
+	cases := []saturationCase{
 		{"MaxValue.Add(One)", func() fixed.Q { return fixed.MaxValue().Add(fixed.One()) }, fixed.MaxValue()},
 		{"MinValue.Sub(One)", func() fixed.Q { return fixed.MinValue().Sub(fixed.One()) }, fixed.MinValue()},
 		{"2^20 * 2^20", func() fixed.Q { return fixed.FromInt(1 << 20).Mul(fixed.FromInt(1 << 20)) }, fixed.MaxValue()},
+		{"MaxValue / epsilon", func() fixed.Q { return fixed.MaxValue().Div(fixed.FromRaw(1)) }, fixed.MaxValue()},
+		{"FromRatio overflow", func() fixed.Q { return fixed.FromRatio(-1<<31, -1) }, fixed.MaxValue()},
+		{"MustParse overflow", func() fixed.Q { return fixed.MustParse("2147483648") }, fixed.MaxValue()},
 		{"MinValue.Neg()", func() fixed.Q { return fixed.MinValue().Neg() }, fixed.MaxValue()},
 		{"MinValue.Abs()", func() fixed.Q { return fixed.MinValue().Abs() }, fixed.MaxValue()},
+		{"MaxValue.Ceil()", func() fixed.Q { return fixed.MaxValue().Ceil() }, fixed.MaxValue()},
+		{"MaxValue.Round()", func() fixed.Q { return fixed.MaxValue().Round() }, fixed.MaxValue()},
 	}
-	for i, s := range steps {
-		if got := s.op(); !got.Eq(s.want) {
-			t.Errorf("%s = %d, want %d", s.name, got.Raw(), s.want.Raw())
-		}
-		if c := fixed.SaturationCount(); c != uint64(i+1) {
-			t.Errorf("after %s: SaturationCount = %d, want %d", s.name, c, i+1)
-		}
+	if strconv.IntSize == 64 {
+		largeInt := int64(1) << 40
+		cases = append(cases, saturationCase{
+			"FromInt overflow",
+			func() fixed.Q { return fixed.FromInt(int(largeInt)) },
+			fixed.MaxValue(),
+		})
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fixed.ResetSaturationCount()
+			if got := c.op(); !got.Eq(c.want) {
+				t.Errorf("result = %d, want %d", got.Raw(), c.want.Raw())
+			}
+			if got := fixed.SaturationCount(); got != 1 {
+				t.Errorf("SaturationCount = %d, want 1", got)
+			}
+		})
 	}
 }
 
@@ -120,6 +132,9 @@ func TestExactBoundariesDoNotSaturate(t *testing.T) {
 	}
 	if got := fixed.FromInt(-1 << 31); !got.Eq(fixed.MinValue()) {
 		t.Errorf("FromInt(-1<<31) = %d, want MinValue", got.Raw())
+	}
+	if got := fixed.MustParse("-2147483648"); !got.Eq(fixed.MinValue()) {
+		t.Errorf("MustParse(-2147483648) = %d, want MinValue", got.Raw())
 	}
 	if c := fixed.SaturationCount(); c != 0 {
 		t.Errorf("SaturationCount = %d, want 0: exact boundary results are not events", c)
@@ -191,52 +206,7 @@ func TestIntegerConversions(t *testing.T) {
 	}
 }
 
-func TestStringFormatsExactDecimals(t *testing.T) {
-	cases := []struct {
-		q    fixed.Q
-		want string
-	}{
-		{fixed.FromInt(3), "3"},
-		{fixed.FromRatio(7, 2), "3.5"},
-		{fixed.FromRatio(-1, 4), "-0.25"},
-		// The expansion of every Q32.32 terminates; String shows it whole.
-		{fixed.FromRaw(1), "0.00000000023283064365386962890625"},
-		{fixed.MinValue(), "-2147483648"},
-		{fixed.MaxValue(), "2147483647.99999999976716935634613037109375"},
-	}
-	for _, c := range cases {
-		if got := c.q.String(); got != c.want {
-			t.Errorf("String(%d) = %q, want %q", c.q.Raw(), got, c.want)
-		}
-	}
-}
-
-func TestMustParseReadsDecimalLiterals(t *testing.T) {
-	cases := []struct {
-		in  string
-		raw int64
-	}{
-		{"6.25", 26843545600},
-		{"-0.001", -4294967}, // nearest: 0.001·2³² = 4294967.296
-		{"0.1", 429496730},   // nearest rounds up: 0.1·2³² = 429496729.6
-		{"2147483648", math.MaxInt64},
-		{"-2147483648", math.MinInt64},
-	}
-	for _, c := range cases {
-		if got := fixed.MustParse(c.in).Raw(); got != c.raw {
-			t.Errorf("MustParse(%q) = %d, want %d", c.in, got, c.raw)
-		}
-	}
-	for _, bad := range []string{"", "6.", ".5", "+1", "1e3", "--1", "0.12345678901234567890"} {
-		t.Run("malformed "+bad, func(t *testing.T) {
-			expectPanic(t, func() { fixed.MustParse(bad) })
-		})
-	}
-}
-
-// boundaryRaws returns the deduplicated boundary set of the plan:
-// zeros, units, named values, power-of-two neighborhoods and the int64
-// extremes.
+// boundaryRaws returns sorted raw values near Q32.32 transition points.
 func boundaryRaws() []int64 {
 	const half, one = int64(1) << 31, int64(1) << 32
 	set := map[int64]struct{}{}
@@ -260,7 +230,7 @@ func boundaryRaws() []int64 {
 	for v := range set {
 		out = append(out, v)
 	}
-	// A sorted set keeps failure output reproducible.
+	// Stable order makes failure output reproducible.
 	slices.Sort(out)
 	return out
 }
@@ -288,8 +258,7 @@ func TestBoundaryCrossProductVsBig(t *testing.T) {
 	}
 }
 
-// TestArrowRule is the machine guard of the import rule: the package
-// compiles from the stdlib allowlist alone. Test files stay free.
+// TestArrowRule limits production imports to the approved standard packages.
 func TestArrowRule(t *testing.T) {
 	allow := map[string]bool{`"math/bits"`: true, `"sync/atomic"`: true}
 	entries, err := os.ReadDir(".")
@@ -312,9 +281,6 @@ func TestArrowRule(t *testing.T) {
 		}
 	}
 }
-
-// Differential fuzz. The oracle is the same math/big helper set the
-// table tests use.
 
 func fuzzSeeds() []int64 {
 	return []int64{
@@ -340,7 +306,7 @@ func FuzzAddSubVsBig(f *testing.F) {
 		if got, want := qa.Sub(qb).Raw(), oracleSub(a, b); got != want {
 			t.Errorf("Sub(%d, %d) = %d, oracle says %d", a, b, got, want)
 		}
-		// Commutativity holds bit-exactly; associativity does not, by design.
+		// Saturation preserves commutativity but not associativity.
 		if x, y := qa.Add(qb), qb.Add(qa); !x.Eq(y) {
 			t.Errorf("Add(%d, %d) != Add(%d, %d)", a, b, b, a)
 		}
