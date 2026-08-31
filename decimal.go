@@ -106,7 +106,7 @@ func decimalFraction(s string) uint64 {
 	}
 
 	var raw uint64
-	for bit := 0; bit < 33; bit++ {
+	for bit := range 33 {
 		var carry byte
 		for i := len(digits) - 1; i >= 0; i-- {
 			v := digits[i]*2 + carry
