@@ -47,6 +47,23 @@ func ExampleQ_String() {
 	// true
 }
 
+func ExampleVec2_Normalize() {
+	v := fixed.Vec2{X: fixed.Zero(), Y: fixed.FromInt(-7)}
+	u := v.Normalize()
+	fmt.Println(u.X, u.Y)
+	// Output:
+	// 0 -1
+}
+
+func ExampleRotFromTurns() {
+	// A quarter turn sends (1, 0) to (0, 1) exactly.
+	r := fixed.RotFromTurns(fixed.FromRatio(1, 4))
+	v := r.Apply(fixed.Vec2{X: fixed.One(), Y: fixed.Zero()})
+	fmt.Println(v.X, v.Y)
+	// Output:
+	// 0 1
+}
+
 func ExampleQ_Clamp() {
 	speed := fixed.FromInt(150)
 	limited := speed.Clamp(fixed.Zero(), fixed.FromInt(100))

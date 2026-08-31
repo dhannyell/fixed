@@ -87,6 +87,13 @@ The `Q` type is opaque. Constructors control how values enter the package,
 operations own saturation and rounding, and `Raw` is the boundary for exact
 bit access.
 
+The module is one flat package by design. Every public type shares one
+contract, so subpackages would only split the documentation and add import
+noise. File names carry the layers: `q*`/`decimal*` for the scalar, `vec2*`
+and `rot*` for the plane, `trig*` for the kernel. Directories exist only for
+content outside the package interface: `internal/` for tools and `.github/`
+for CI.
+
 The Go implementation defines the bit-level contract. An independent
 implementation must preserve the rounding, saturation, and raw representation
 before it exchanges values with this package. A change to one of these rules is
