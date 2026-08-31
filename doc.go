@@ -37,28 +37,41 @@
 //
 // # Angles
 //
-// Angles are turns: [One] is a full revolution. The fractional bits of a Q map
-// directly onto the circle, so range reduction is a bit mask and never rounds.
-// Pi stays out of the reduction entirely.
+// Angles use turns. [One] is a full revolution. The fractional bits of a Q map
+// directly to the circle, so range reduction does not use pi and does not
+// round.
 //
-// [SinTurns] and [CosTurns] are periodic by contract. Every Q is a valid
-// input. They never panic and never saturate. Results stay in [-One, One].
-// The kernel is a quarter-wave table with linear interpolation. The maximum
-// absolute error is 2⁻²⁰.
+// [SinTurns] and [CosTurns] accept every Q value. They never panic or saturate,
+// and their results stay in [-One, One]. They use a 1024-interval quarter-wave
+// table. Table entries round to nearest, and linear interpolation floors. The
+// maximum absolute error is 2⁻²⁰.
 //
-// [Atan2Turns] recovers an angle from a vector. The result stays in
-// (-1/2, 1/2] turns. [Rot] stores a rotation as its sine and cosine, so
-// composition and application need no trig evaluation.
+// [Atan2Turns] returns an angle in (-1/2, 1/2] turns. It reduces the input to a
+// ratio in [0, 1], truncates that ratio to Q32.32, and uses a 1024-interval
+// table. Table entries round to nearest, and linear interpolation floors.
+// Octant reconstruction is exact.
+//
+// # Vectors and rotations
+//
+// [Vec2.LenSq] composes scalar multiplication and addition, so it can saturate
+// even when the length fits in Q32.32. [Vec2.Len] computes the length with a
+// 128-bit intermediate and saturates only when the final length is out of
+// range. [Vec2.Normalize] scales the components before it squares them, so
+// intermediate underflow cannot turn a nonzero vector into the zero vector.
+//
+// [Rot] stores a rotation as its sine and cosine. The zero Rot is invalid. Use
+// [RotIdentity] or [RotFromTurns] to construct a rotation. Repeated composition
+// can introduce rounding drift; [Rot.Normalize] restores unit length.
 //
 // # Compatibility contract
 //
 // The raw representation, saturation rules, and rounding rules are part of the
 // public contract. An independent implementation must reproduce these rules
-// before it exchanges raw values with this package. The table literals in
-// trig_table.go are part of this contract: an independent kernel must embed
-// the same table.
+// before it exchanges raw values with this package. The trigonometric raw
+// outputs are also part of the contract. A compatible implementation may use a
+// different representation, but it must produce the same output bits.
 //
 // # Dependencies
 //
-// Production files import only math/bits and sync/atomic.
+// The fixed package imports only math/bits and sync/atomic.
 package fixed

@@ -2,10 +2,8 @@
 
 package fixed
 
-// sineQuarter holds sin over [0, 1/4] turn on a 1024-interval grid,
-// each entry rounded to nearest on the Q32.32 grid. The table is part
-// of the kernel bit contract: an independent kernel must embed the
-// same literals.
+// sineQuarter holds sine over [0, 1/4] turn.
+// Entries round to nearest on the Q32.32 grid.
 var sineQuarter = [1025]int64{
 	0,
 	6588395,
@@ -1034,9 +1032,8 @@ var sineQuarter = [1025]int64{
 	4294967296,
 }
 
-// atanUnit holds atan over the unit ratio [0, 1] in turns on a
-// 1024-interval grid, each entry rounded to nearest on the Q32.32
-// grid. Same contract as sineQuarter.
+// atanUnit holds arctangent over [0, 1] in turns.
+// Entries round to nearest on the Q32.32 grid.
 var atanUnit = [1025]int64{
 	0,
 	667544,

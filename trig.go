@@ -2,28 +2,26 @@ package fixed
 
 import "math/bits"
 
-// SinTurns returns the sine of the angle t, measured in turns: One()
-// is a full revolution. The function is periodic by contract — only
-// the fractional part of t is used — so every Q is a valid input; it
-// never panics and never saturates. The result stays in [-One, One].
+// SinTurns returns the sine of t, where One is a full revolution. It
+// uses only the fractional part of t, accepts every Q value, and returns
+// a value in [-One, One] without saturation.
 //
-// The kernel is the 1024-interval quarter-wave table of trig_table.go
-// with linear interpolation: table entries round to nearest, the
-// interpolation floors, and the maximum absolute error is 2⁻²⁰.
+// The 1024-interval quarter-wave table rounds entries to nearest. Linear
+// interpolation floors. The maximum absolute error is 2⁻²⁰.
 func SinTurns(t Q) Q {
 	return Q{raw: sinFrac(uint32(t.raw))}
 }
 
-// CosTurns returns the cosine of the angle t in turns. It shares the
-// contract and the kernel of SinTurns through the quarter-turn shift.
+// CosTurns returns the cosine of t in turns. It uses the same rules as
+// SinTurns with a quarter-turn shift.
 func CosTurns(t Q) Q {
 	return Q{raw: sinFrac(uint32(t.raw) + 1<<30)}
 }
 
-// Atan2Turns returns the angle of the vector (x, y) in (-1/2, 1/2]
-// turns. Atan2Turns(Zero(), Zero()) returns Zero, matching the float
-// convention. It never panics and never saturates; the maximum
-// absolute error is 2⁻²⁰ turn.
+// Atan2Turns returns the angle of (x, y) in (-1/2, 1/2] turns.
+// Atan2Turns(Zero(), Zero()) returns Zero. It never panics or saturates.
+// The unit ratio is truncated to Q32.32, table entries round to nearest,
+// and linear interpolation floors. The maximum absolute error is 2⁻²⁰ turn.
 func Atan2Turns(y, x Q) Q {
 	ay, ax := magnitude(y.raw), magnitude(x.raw)
 	if ay == 0 && ax == 0 {
@@ -62,9 +60,8 @@ func atanLerp(r uint64) int64 {
 	return v
 }
 
-// sinFrac evaluates sine on the 32-bit turn fraction. The truncating
-// uint32 conversion above equals t.Sub(t.Floor()) in two's complement,
-// so the range reduction is exact.
+// sinFrac evaluates sine on a 32-bit turn fraction. Converting a raw
+// Q value to uint32 performs exact range reduction in two's complement.
 func sinFrac(u uint32) int64 {
 	quad := u >> 30
 	pos := u & (1<<30 - 1)
