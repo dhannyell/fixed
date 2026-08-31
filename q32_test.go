@@ -184,7 +184,7 @@ func TestSqrtFloorsTheRoot(t *testing.T) {
 	}
 }
 
-func TestIntegerConversions(t *testing.T) {
+func TestQ32IntegerConversions(t *testing.T) {
 	cases := []struct {
 		num, den                  int
 		floor, ceil, round, trunc int

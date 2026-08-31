@@ -142,6 +142,26 @@ func TestIsqrt128MatchesOracle(t *testing.T) {
 	}
 }
 
+func TestIsqrt64MatchesOracleAtBoundaries(t *testing.T) {
+	cases := []uint64{0, 1, 2, 3, ^uint64(0), ^uint64(0) - 1}
+	for _, root := range []uint64{1, 2, 3, 255, 256, 1 << 16, 1 << 31, 1<<32 - 1} {
+		square := root * root
+		cases = append(cases, square)
+		if square > 0 {
+			cases = append(cases, square-1)
+		}
+		if square < ^uint64(0) {
+			cases = append(cases, square+1)
+		}
+	}
+	for _, n := range cases {
+		want := oracleIsqrt128(0, n)
+		if got := isqrt64(n); got != want {
+			t.Errorf("isqrt64(%#x) = %d, want %d", n, got, want)
+		}
+	}
+}
+
 // isqrtOperands mixes magnitudes seen by Sqrt (96-bit radicands) and by
 // hypotRaw (sums of squared components).
 func isqrtOperands() [256][2]uint64 {
@@ -165,6 +185,19 @@ func isqrtOperands() [256][2]uint64 {
 }
 
 var benchSinkRoot uint64
+
+func BenchmarkIsqrt64(b *testing.B) {
+	ops := isqrtOperands()
+	var acc uint64
+	idx := 0
+	for range b.N {
+		n := ops[idx&255][1]
+		r := isqrt64(n)
+		acc += r
+		idx += int(r&7) + 1
+	}
+	benchSinkRoot = acc
+}
 
 func BenchmarkIsqrt128(b *testing.B) {
 	ops := isqrtOperands()

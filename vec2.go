@@ -88,8 +88,25 @@ func unitPair(x, y int64) (Q32, Q32) {
 	if scale == 0 {
 		return Q32{}, Q32{}
 	}
-	sx := divMag(mx, scale, x < 0)
-	sy := divMag(my, scale, y < 0)
+	var sx, sy Q32
+	switch {
+	case mx == my:
+		sx = Q32{raw: signedUnit(x < 0)}
+		sy = Q32{raw: signedUnit(y < 0)}
+	case mx > my:
+		sx = Q32{raw: signedUnit(x < 0)}
+		sy = divMag(my, scale, y < 0)
+	default:
+		sx = divMag(mx, scale, x < 0)
+		sy = Q32{raw: signedUnit(y < 0)}
+	}
 	n := sx.Mul(sx).Add(sy.Mul(sy)).Sqrt()
 	return sx.Div(n), sy.Div(n)
+}
+
+func signedUnit(neg bool) int64 {
+	if neg {
+		return -q32RawOne
+	}
+	return q32RawOne
 }
