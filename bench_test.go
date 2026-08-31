@@ -1,8 +1,5 @@
 package fixed_test
 
-// Kernel measurement harness. External consumers reuse these
-// benchmark names; do not delete or rename them.
-
 import (
 	"testing"
 
@@ -11,8 +8,7 @@ import (
 
 var benchSink int64
 
-// BenchmarkSinCosTurns sweeps the circle with a golden-ratio step so
-// the table cannot ride a cache-friendly sequential access pattern.
+// BenchmarkSinCosTurns uses a non-sequential step to exercise table access.
 func BenchmarkSinCosTurns(b *testing.B) {
 	var acc int64
 	u := int64(0)

@@ -7,9 +7,7 @@ import (
 	"github.com/dhannyell/fixed"
 )
 
-// TestSinCosTurnsGoldenBits pins the kernel bits. These values are
-// part of the compatibility contract: a mismatch is a contract change,
-// not a table refresh.
+// These values are part of the compatibility contract.
 func TestSinCosTurnsGoldenBits(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -29,16 +27,12 @@ func TestSinCosTurnsGoldenBits(t *testing.T) {
 			t.Errorf("%s = %d, want %d", c.name, c.got.Raw(), c.want.Raw())
 		}
 	}
-	// Cross-check the 1/8 pin against the float oracle: the literal
-	// must be sin(pi/4) rounded to nearest on the Q32.32 grid.
+	// The 1/8 pin must be sin(pi/4) rounded to the Q32.32 grid.
 	if e := math.Abs(float64(0xB504F334)*0x1p-32 - math.Sin(math.Pi/4)); e > 0x1p-33 {
 		t.Errorf("Sin(1/8) pin is %.3g away from the oracle", e)
 	}
 }
 
-// TestSinCosTurnsContracts checks the documented function contracts:
-// periodicity, symmetry, total input domain and freedom from
-// saturation events.
 func TestSinCosTurnsContracts(t *testing.T) {
 	angles := []fixed.Q{
 		fixed.Zero(),
@@ -60,7 +54,6 @@ func TestSinCosTurnsContracts(t *testing.T) {
 			t.Errorf("CosTurns(-%v) = %d, want %d: cosine is even", a, got.Raw(), want.Raw())
 		}
 	}
-	// The extremes are valid inputs; results stay inside [-One, One].
 	for _, a := range []fixed.Q{fixed.MinValue(), fixed.MaxValue()} {
 		if v := fixed.SinTurns(a).Abs(); fixed.One().Less(v) {
 			t.Errorf("SinTurns(%d) = out of [-One, One]", a.Raw())
@@ -71,9 +64,7 @@ func TestSinCosTurnsContracts(t *testing.T) {
 	}
 }
 
-// TestSinCosTurnsMeetTheFloor is the accuracy gate of the plan: max
-// absolute error <= 2^-20 over the whole turn. The float64 oracle
-// noise (2^-53) is negligible at this scale.
+// The float64 oracle noise is negligible against the 2⁻²⁰ error limit.
 func TestSinCosTurnsMeetTheFloor(t *testing.T) {
 	const floor = 1.0 / (1 << 20)
 	worst := 0.0
@@ -102,9 +93,7 @@ func TestSinCosTurnsMeetTheFloor(t *testing.T) {
 	}
 }
 
-// TestAtan2TurnsGoldenBits pins the octant reduction on the axes and
-// diagonals. The diagonal cases are exact because atan(1) is exactly
-// 1/8 turn on the Q32.32 grid.
+// atan(1) is exactly 1/8 turn on the Q32.32 grid.
 func TestAtan2TurnsGoldenBits(t *testing.T) {
 	one := fixed.One()
 	cases := []struct {
@@ -129,9 +118,7 @@ func TestAtan2TurnsGoldenBits(t *testing.T) {
 	}
 }
 
-// TestAtan2TurnsMeetsTheFloor sweeps pseudo-random vectors and checks
-// the angle against the float oracle: max absolute error <= 2^-20
-// turn. The difference folds through the wrap at +-1/2 turn.
+// Angle differences wrap at half a turn.
 func TestAtan2TurnsMeetsTheFloor(t *testing.T) {
 	const floor = 1.0 / (1 << 20)
 	worst := 0.0
@@ -169,9 +156,7 @@ func TestAtan2TurnsMeetsTheFloor(t *testing.T) {
 	}
 }
 
-// FuzzAtan2SinCosRoundTrip closes the loop: the angle recovered from
-// (sin, cos) must land within 2^-18 turn of the input fraction. The
-// difference folds through the 32-bit wrap.
+// The 2⁻¹⁸ budget includes both table interpolations.
 func FuzzAtan2SinCosRoundTrip(f *testing.F) {
 	for _, v := range fuzzSeeds() {
 		f.Add(v)
@@ -186,9 +171,7 @@ func FuzzAtan2SinCosRoundTrip(f *testing.F) {
 	})
 }
 
-// FuzzSinCosPythagoras checks s²+c² near One for every angle. The
-// budget 2⁻¹⁸ covers the kernel error doubled by the squares plus the
-// Mul floors.
+// The 2⁻¹⁸ budget includes both squares and multiplication floors.
 func FuzzSinCosPythagoras(f *testing.F) {
 	for _, v := range fuzzSeeds() {
 		f.Add(v)
