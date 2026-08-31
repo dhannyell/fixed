@@ -79,6 +79,35 @@ saturation.
 Every saturation increments a process-wide atomic counter. `SaturationCount`
 provides diagnostics without changing any `Q` value or operation result.
 
+## Cost of operations
+
+The contract promises bits, not speed. The numbers below are a guide for
+design choices on one machine: AMD Ryzen 7 5800X3D (amd64), Go 1.26.4,
+`go test -bench . -count=10` summarized with benchstat. Variation stayed
+under ±12%.
+
+| Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) |
+| --- | --- | --- | --- |
+| `Add` | 0.5 | 0.5 | 2,100 |
+| `Mul` | 2.8 | 1.8 | 570 |
+| `Div` | 4.7 | 3.0 | 330 |
+| `Sqrt` | 13.1 | 6.2 | 160 |
+| `Vec2.Len` | 15.9 | 12.8 | 78 |
+| `SinTurns` + `CosTurns` | — | 4.2 per pair | 240 pairs |
+
+Read each column alone; the columns measure different situations. Latency is
+the cost when each result feeds the next operation, as in an iterative
+solver. Throughput is the cost when independent operations overlap in the
+pipeline, as in a loop over many values. The rate column is the reciprocal of
+the throughput column, rounded to two digits; use it to size a frame budget. Each latency chain also contains one cheap
+companion operation that keeps the value in domain; `bench_test.go` shows the
+exact chains.
+
+Two portability notes. `Div` costs more on arm64, because the 128-bit
+division is a software routine there. `Sqrt` does not divide on any
+architecture: its hardware seed plus integer corrections stay within
+multiplications.
+
 ## Vectors and angles
 
 `Vec2` provides the usual 2D operations over `Q`: addition, scaling, dot
@@ -101,9 +130,11 @@ a valid rotation; start with `RotIdentity` or `RotFromTurns`.
 
 ## Architecture
 
-`fixed` is a leaf module. The package imports only `math/bits` and
-`sync/atomic`. This small dependency surface lets applications use the numeric
-type without importing unrelated systems.
+`fixed` is a leaf module. The package imports only `math`, `math/bits`, and
+`sync/atomic`. The `math` import provides hardware seeds; exact integer
+comparisons close every result, so floating point never decides a bit. This
+small dependency surface lets applications use the numeric type without
+importing unrelated systems.
 
 The `Q` type is opaque. Constructors control how values enter the package,
 operations own saturation and rounding, and `Raw` is the boundary for exact

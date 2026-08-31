@@ -73,5 +73,7 @@
 //
 // # Dependencies
 //
-// The fixed package imports only math/bits and sync/atomic.
+// The fixed package imports only math, math/bits, and sync/atomic. The math
+// import provides hardware seeds; exact integer comparisons close every
+// result, so floating point never decides a bit.
 package fixed
