@@ -78,18 +78,7 @@ func hypotRaw(x, y int64) uint64 {
 	yHi, yLo := bits.Mul64(magnitude(y), magnitude(y))
 	lo, carry := bits.Add64(xLo, yLo, 0)
 	hi, _ := bits.Add64(xHi, yHi, carry)
-
-	loRoot, hiRoot := uint64(0), ^uint64(0)
-	for loRoot < hiRoot {
-		mid := loRoot + (hiRoot-loRoot)/2 + 1
-		midHi, midLo := bits.Mul64(mid, mid)
-		if midHi < hi || (midHi == hi && midLo <= lo) {
-			loRoot = mid
-		} else {
-			hiRoot = mid - 1
-		}
-	}
-	return loRoot
+	return isqrt128(hi, lo)
 }
 
 // unitPair scales before squaring so the pair cannot underflow to zero.

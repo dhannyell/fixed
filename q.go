@@ -1,6 +1,7 @@
 package fixed
 
 import (
+	"math"
 	"math/bits"
 	"sync/atomic"
 )
@@ -34,7 +35,7 @@ func FromInt(i int) Q {
 // It panics when den is zero.
 func FromRatio(num, den int) Q {
 	if den == 0 {
-		panic("fixed: division by zero")
+		panicDivZero()
 	}
 	return divMag(magnitude(int64(num)), magnitude(int64(den)), (num < 0) != (den < 0))
 }
@@ -114,9 +115,16 @@ func (q Q) Mul(o Q) Q {
 // It panics when o is zero.
 func (q Q) Div(o Q) Q {
 	if o.raw == 0 {
-		panic("fixed: division by zero")
+		panicDivZero()
 	}
-	return divMag(magnitude(q.raw), magnitude(o.raw), (q.raw < 0) != (o.raw < 0))
+	n, d := magnitude(q.raw), magnitude(o.raw)
+	neg := (q.raw < 0) != (o.raw < 0)
+	hi, lo := n>>32, n<<32
+	if hi >= d {
+		return saturatedQuotient(neg)
+	}
+	quo, _ := bits.Div64(hi, lo, d)
+	return signedQuotient(quo, neg)
 }
 
 // Sqrt returns floor(sqrt(q)). It panics when q is negative.
@@ -125,22 +133,8 @@ func (q Q) Sqrt() Q {
 	if q.raw < 0 {
 		panic("fixed: square root of a negative value")
 	}
-	hi := uint64(q.raw) >> 32
-	lo := uint64(q.raw) << 32
-
 	// The 96-bit radicand has a root of at most 48 bits.
-	var root, rem uint64
-	for range 64 {
-		rem = rem<<2 | hi>>62
-		hi = hi<<2 | lo>>62
-		lo <<= 2
-		root <<= 1
-		if t := root<<1 | 1; rem >= t {
-			rem -= t
-			root |= 1
-		}
-	}
-	return Q{raw: int64(root)}
+	return Q{raw: int64(isqrt128(uint64(q.raw)>>32, uint64(q.raw)<<32))}
 }
 
 // Neg returns -q. Neg of MinValue saturates to MaxValue.
@@ -247,24 +241,26 @@ func (q Q) Int() int {
 }
 
 func magnitude(v int64) uint64 {
-	if v < 0 {
-		return -uint64(v)
-	}
-	return uint64(v)
+	// Branchless absolute value; MinInt64 maps to 2⁶³ unchanged.
+	m := uint64(v >> 63)
+	return (uint64(v) ^ m) - m
 }
 
-// divMag returns the signed Q32.32 quotient of magnitudes n and d. It
-// truncates toward zero and saturates. The caller must reject d == 0.
-func divMag(n, d uint64, neg bool) Q {
-	hi, lo := n>>32, n<<32
-	if hi >= d {
-		saturationEvents.Add(1)
-		if neg {
-			return Q{raw: rawMin}
-		}
-		return Q{raw: rawMax}
+func panicDivZero() {
+	panic("fixed: division by zero")
+}
+
+// saturatedQuotient handles a quotient at or beyond 2³², off the hot path.
+func saturatedQuotient(neg bool) Q {
+	saturationEvents.Add(1)
+	if neg {
+		return Q{raw: rawMin}
 	}
-	quo, _ := bits.Div64(hi, lo, d)
+	return Q{raw: rawMax}
+}
+
+// signedQuotient applies the sign and the two output saturations.
+func signedQuotient(quo uint64, neg bool) Q {
 	if neg {
 		if quo > 1<<63 {
 			saturationEvents.Add(1)
@@ -277,6 +273,76 @@ func divMag(n, d uint64, neg bool) Q {
 		return Q{raw: rawMax}
 	}
 	return Q{raw: int64(quo)}
+}
+
+// divMag returns the signed Q32.32 quotient of magnitudes n and d. It
+// truncates toward zero and saturates. The caller must reject d == 0.
+func divMag(n, d uint64, neg bool) Q {
+	hi, lo := n>>32, n<<32
+	if hi >= d {
+		return saturatedQuotient(neg)
+	}
+	quo, _ := bits.Div64(hi, lo, d)
+	return signedQuotient(quo, neg)
+}
+
+// isqrt128 returns floor(sqrt(hi·2⁶⁴+lo)). A hardware square root only
+// seeds the answer; exact 128-bit integer checks settle the floor, so
+// platform float rounding can never reach the result.
+func isqrt128(hi, lo uint64) uint64 {
+	if hi == 0 && lo == 0 {
+		return 0
+	}
+
+	// Near the top of the range the root can equal hi, which the Newton
+	// division below cannot take. Two decrements at most resolve it.
+	if hi >= ^uint64(0)-1 {
+		r := ^uint64(0)
+		for {
+			pHi, pLo := bits.Mul64(r, r)
+			if pHi < hi || (pHi == hi && pLo <= lo) {
+				return r
+			}
+			r--
+		}
+	}
+
+	f := math.Sqrt(float64(hi)*0x1p64 + float64(lo))
+	var x uint64
+	if f >= 0x1p64 {
+		x = ^uint64(0)
+	} else {
+		x = uint64(f)
+	}
+
+	// A root beyond 52 bits outruns float precision: the seed can be off
+	// by thousands of units. One Newton round collapses that to a few.
+	if hi >= 1<<40 {
+		if x <= hi {
+			x = hi + 1
+		}
+		q, _ := bits.Div64(hi, lo, x)
+		sum, carry := bits.Add64(x, q, 0)
+		x = sum>>1 | carry<<63
+	}
+
+	for {
+		pHi, pLo := bits.Mul64(x, x)
+		if pHi > hi || (pHi == hi && pLo > lo) {
+			x--
+			continue
+		}
+		break
+	}
+	for x < ^uint64(0) {
+		y := x + 1
+		pHi, pLo := bits.Mul64(y, y)
+		if pHi > hi || (pHi == hi && pLo > lo) {
+			break
+		}
+		x = y
+	}
+	return x
 }
 
 // saturationEvents records diagnostic data. It does not affect Q values or
