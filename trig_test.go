@@ -11,7 +11,7 @@ import (
 func TestSinCosTurnsGoldenBits(t *testing.T) {
 	cases := []struct {
 		name      string
-		got, want fixed.Q
+		got, want fixed.Q32
 	}{
 		{"Sin(0)", fixed.SinTurns(fixed.Zero()), fixed.Zero()},
 		{"Sin(1/4)", fixed.SinTurns(fixed.FromRatio(1, 4)), fixed.One()},
@@ -34,7 +34,7 @@ func TestSinCosTurnsGoldenBits(t *testing.T) {
 }
 
 func TestSinCosTurnsContracts(t *testing.T) {
-	angles := []fixed.Q{
+	angles := []fixed.Q32{
 		fixed.Zero(),
 		fixed.FromRatio(1, 3),
 		fixed.FromRatio(-2, 7),
@@ -54,7 +54,7 @@ func TestSinCosTurnsContracts(t *testing.T) {
 			t.Errorf("CosTurns(-%v) = %d, want %d: cosine is even", a, got.Raw(), want.Raw())
 		}
 	}
-	for _, a := range []fixed.Q{fixed.MinValue(), fixed.MaxValue()} {
+	for _, a := range []fixed.Q32{fixed.MinValue(), fixed.MaxValue()} {
 		if v := fixed.SinTurns(a).Abs(); fixed.One().Less(v) {
 			t.Errorf("SinTurns(%d) = out of [-One, One]", a.Raw())
 		}
@@ -98,7 +98,7 @@ func TestAtan2TurnsGoldenBits(t *testing.T) {
 	one := fixed.One()
 	cases := []struct {
 		name      string
-		got, want fixed.Q
+		got, want fixed.Q32
 	}{
 		{"(0,0)", fixed.Atan2Turns(fixed.Zero(), fixed.Zero()), fixed.Zero()},
 		{"+x axis", fixed.Atan2Turns(fixed.Zero(), one), fixed.Zero()},

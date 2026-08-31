@@ -3,7 +3,7 @@
 `fixed` is a small Go package for signed Q32.32 arithmetic. Equal inputs produce
 the same result bits on every supported architecture.
 
-A `Q` value uses one `int64`: 32 bits for the signed integer part and 32 bits
+A `Q32` value uses one `int64`: 32 bits for the signed integer part and 32 bits
 for the fraction. This gives a resolution of 2⁻³² and a range from -2³¹ to
 2³¹ - 2⁻³².
 
@@ -77,7 +77,7 @@ therefore change its result. Accumulators should have enough headroom to avoid
 saturation.
 
 Every saturation increments a process-wide atomic counter. `SaturationCount`
-provides diagnostics without changing any `Q` value or operation result.
+provides diagnostics without changing any `Q32` value or operation result.
 
 ## Cost of operations
 
@@ -110,7 +110,7 @@ multiplications.
 
 ## Vectors and angles
 
-`Vec2` provides the usual 2D operations over `Q`: addition, scaling, dot
+`Vec2` provides the usual 2D operations over `Q32`: addition, scaling, dot
 product, length, normalization, distance, and interpolation. `LenSq` follows
 the scalar operation order and can saturate even when the length still fits.
 `Len` uses a 128-bit intermediate and saturates only when the final magnitude
@@ -119,7 +119,7 @@ avoids intermediate overflow and underflow.
 
 Angles use turns instead of radians. `One()` is one complete revolution,
 `Half()` is half a revolution, and `FromRatio(1, 4)` is a quarter turn. This
-maps the fractional bits of `Q` directly onto the circle and avoids reduction
+maps the fractional bits of `Q32` directly onto the circle and avoids reduction
 through an approximation of pi.
 
 `SinTurns`, `CosTurns`, and `Atan2Turns` use committed lookup tables and linear
@@ -136,7 +136,7 @@ comparisons close every result, so floating point never decides a bit. This
 small dependency surface lets applications use the numeric type without
 importing unrelated systems.
 
-The `Q` type is opaque. Constructors control how values enter the package,
+The `Q32` type is opaque. Constructors control how values enter the package,
 operations own saturation and rounding, and `Raw` is the boundary for exact
 bit access.
 

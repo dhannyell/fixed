@@ -86,26 +86,26 @@ func TestDivTruncatesTowardZero(t *testing.T) {
 func TestSaturationClampsAndCounts(t *testing.T) {
 	type saturationCase struct {
 		name string
-		op   func() fixed.Q
-		want fixed.Q
+		op   func() fixed.Q32
+		want fixed.Q32
 	}
 	cases := []saturationCase{
-		{"MaxValue.Add(One)", func() fixed.Q { return fixed.MaxValue().Add(fixed.One()) }, fixed.MaxValue()},
-		{"MinValue.Sub(One)", func() fixed.Q { return fixed.MinValue().Sub(fixed.One()) }, fixed.MinValue()},
-		{"2^20 * 2^20", func() fixed.Q { return fixed.FromInt(1 << 20).Mul(fixed.FromInt(1 << 20)) }, fixed.MaxValue()},
-		{"MaxValue / epsilon", func() fixed.Q { return fixed.MaxValue().Div(fixed.FromRaw(1)) }, fixed.MaxValue()},
-		{"FromRatio overflow", func() fixed.Q { return fixed.FromRatio(-1<<31, -1) }, fixed.MaxValue()},
-		{"MustParse overflow", func() fixed.Q { return fixed.MustParse("2147483648") }, fixed.MaxValue()},
-		{"MinValue.Neg()", func() fixed.Q { return fixed.MinValue().Neg() }, fixed.MaxValue()},
-		{"MinValue.Abs()", func() fixed.Q { return fixed.MinValue().Abs() }, fixed.MaxValue()},
-		{"MaxValue.Ceil()", func() fixed.Q { return fixed.MaxValue().Ceil() }, fixed.MaxValue()},
-		{"MaxValue.Round()", func() fixed.Q { return fixed.MaxValue().Round() }, fixed.MaxValue()},
+		{"MaxValue.Add(One)", func() fixed.Q32 { return fixed.MaxValue().Add(fixed.One()) }, fixed.MaxValue()},
+		{"MinValue.Sub(One)", func() fixed.Q32 { return fixed.MinValue().Sub(fixed.One()) }, fixed.MinValue()},
+		{"2^20 * 2^20", func() fixed.Q32 { return fixed.FromInt(1 << 20).Mul(fixed.FromInt(1 << 20)) }, fixed.MaxValue()},
+		{"MaxValue / epsilon", func() fixed.Q32 { return fixed.MaxValue().Div(fixed.FromRaw(1)) }, fixed.MaxValue()},
+		{"FromRatio overflow", func() fixed.Q32 { return fixed.FromRatio(-1<<31, -1) }, fixed.MaxValue()},
+		{"MustParse overflow", func() fixed.Q32 { return fixed.MustParse("2147483648") }, fixed.MaxValue()},
+		{"MinValue.Neg()", func() fixed.Q32 { return fixed.MinValue().Neg() }, fixed.MaxValue()},
+		{"MinValue.Abs()", func() fixed.Q32 { return fixed.MinValue().Abs() }, fixed.MaxValue()},
+		{"MaxValue.Ceil()", func() fixed.Q32 { return fixed.MaxValue().Ceil() }, fixed.MaxValue()},
+		{"MaxValue.Round()", func() fixed.Q32 { return fixed.MaxValue().Round() }, fixed.MaxValue()},
 	}
 	if strconv.IntSize == 64 {
 		largeInt := int64(1) << 40
 		cases = append(cases, saturationCase{
 			"FromInt overflow",
-			func() fixed.Q { return fixed.FromInt(int(largeInt)) },
+			func() fixed.Q32 { return fixed.FromInt(int(largeInt)) },
 			fixed.MaxValue(),
 		})
 	}

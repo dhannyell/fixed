@@ -27,7 +27,7 @@ func TestRotQuarterTurnsExact(t *testing.T) {
 }
 
 func TestRotMulMatchesAngleSum(t *testing.T) {
-	angles := []fixed.Q{
+	angles := []fixed.Q32{
 		fixed.Zero(),
 		fixed.FromRatio(1, 3),
 		fixed.FromRatio(-2, 7),
@@ -51,7 +51,7 @@ func TestRotMulMatchesAngleSum(t *testing.T) {
 
 func TestRotInvComposesToIdentity(t *testing.T) {
 	const budget = 1 << 14 // 2⁻¹⁸ per component.
-	for _, a := range []fixed.Q{fixed.FromRatio(1, 3), fixed.MustParse("-0.4"), fixed.FromRatio(7, 9)} {
+	for _, a := range []fixed.Q32{fixed.FromRatio(1, 3), fixed.MustParse("-0.4"), fixed.FromRatio(7, 9)} {
 		r := fixed.RotFromTurns(a)
 		got := r.Mul(r.Inv())
 		if d := got.Sin.Abs().Raw(); d > budget {

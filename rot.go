@@ -5,17 +5,17 @@ package fixed
 // The zero Rot is not a valid rotation; start from RotIdentity or
 // RotFromTurns.
 type Rot struct {
-	Sin, Cos Q
+	Sin, Cos Q32
 }
 
 // RotIdentity returns the rotation by zero turns.
 func RotIdentity() Rot {
-	return Rot{Sin: Q{}, Cos: One()}
+	return Rot{Sin: Q32{}, Cos: One()}
 }
 
 // RotFromTurns returns the rotation by the angle t in turns. It shares
 // the kernel and the contract of SinTurns and CosTurns.
-func RotFromTurns(t Q) Rot {
+func RotFromTurns(t Q32) Rot {
 	return Rot{Sin: SinTurns(t), Cos: CosTurns(t)}
 }
 

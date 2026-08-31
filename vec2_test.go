@@ -44,8 +44,8 @@ func TestVec2ExactCases(t *testing.T) {
 func TestVec2NormPreservesScale(t *testing.T) {
 	cases := []struct {
 		name        string
-		x           fixed.Q
-		length      fixed.Q
+		x           fixed.Q32
+		length      fixed.Q32
 		unit        fixed.Vec2
 		saturations uint64
 	}{

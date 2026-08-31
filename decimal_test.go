@@ -9,7 +9,7 @@ import (
 
 func TestStringFormatsExactDecimals(t *testing.T) {
 	cases := []struct {
-		q    fixed.Q
+		q    fixed.Q32
 		want string
 	}{
 		{fixed.FromInt(3), "3"},

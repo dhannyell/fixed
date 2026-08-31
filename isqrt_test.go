@@ -150,7 +150,7 @@ func isqrtOperands() [256][2]uint64 {
 	for i := range ops {
 		raw := splitmix64(&state) >> (1 + splitmix64(&state)%24)
 		switch i % 3 {
-		case 0: // Sqrt radicand of a positive Q value.
+		case 0: // Sqrt radicand of a positive Q32 value.
 			ops[i] = [2]uint64{raw >> 32, raw << 32}
 		case 1: // hypotRaw radicand for two components near raw.
 			xHi, xLo := bits.Mul64(raw, raw)

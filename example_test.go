@@ -30,14 +30,14 @@ func ExampleMustParse() {
 	// -0.00099999993108212947845458984375
 }
 
-func ExampleQ_Mul() {
+func ExampleQ32_Mul() {
 	area := fixed.FromRatio(5, 2).Mul(fixed.FromInt(4))
 	fmt.Println(area)
 	// Output:
 	// 10
 }
 
-func ExampleQ_String() {
+func ExampleQ32_String() {
 	q := fixed.FromRaw(1)
 	text := q.String()
 	fmt.Println(text)
@@ -64,7 +64,7 @@ func ExampleRotFromTurns() {
 	// 0 1
 }
 
-func ExampleQ_Clamp() {
+func ExampleQ32_Clamp() {
 	speed := fixed.FromInt(150)
 	limited := speed.Clamp(fixed.Zero(), fixed.FromInt(100))
 	fmt.Println(limited)
