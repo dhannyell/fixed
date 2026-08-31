@@ -25,6 +25,27 @@ func BenchmarkSinCosTurns(b *testing.B) {
 // the pipeline. Latency benchmarks feed each result into the next call and
 // measure the dependent cost one caller pays. Do not compare the two.
 
+func BenchmarkScalarAddThroughput(b *testing.B) {
+	step := fixed.FromRaw(1)
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.FromRaw(u).Add(step).Raw()
+		u += 2654435761
+	}
+	benchSink = acc
+}
+
+func BenchmarkScalarAddLatency(b *testing.B) {
+	// The step is one raw unit, so x stays far from saturation.
+	step := fixed.FromRaw(1)
+	x := fixed.Zero()
+	for range b.N {
+		x = x.Add(step)
+	}
+	benchSink = x.Raw()
+}
+
 func BenchmarkScalarMulThroughput(b *testing.B) {
 	factor := fixed.FromRatio(255, 256)
 	var acc int64
