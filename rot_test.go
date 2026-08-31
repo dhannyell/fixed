@@ -6,9 +6,6 @@ import (
 	"github.com/dhannyell/fixed"
 )
 
-// TestRotQuarterTurnsExact checks the exact cases: on the quarter
-// turns the sine and cosine are 0, One or -One, and Mul by these
-// values loses no bits.
 func TestRotQuarterTurnsExact(t *testing.T) {
 	v := fixed.Vec2{X: fixed.FromInt(3), Y: fixed.FromInt(4)}
 	cases := []struct {
@@ -29,9 +26,6 @@ func TestRotQuarterTurnsExact(t *testing.T) {
 	}
 }
 
-// TestRotMulMatchesAngleSum compares composition against the direct
-// evaluation at the summed angle. Budget per component: 2^-18, the
-// kernel error doubled by the products plus the Mul floors.
 func TestRotMulMatchesAngleSum(t *testing.T) {
 	angles := []fixed.Q{
 		fixed.Zero(),
@@ -40,7 +34,7 @@ func TestRotMulMatchesAngleSum(t *testing.T) {
 		fixed.MustParse("0.123"),
 		fixed.FromRatio(5, 8),
 	}
-	const budget = 1 << 14
+	const budget = 1 << 14 // 2⁻¹⁸ per component.
 	for _, a := range angles {
 		for _, b := range angles {
 			got := fixed.RotFromTurns(a).Mul(fixed.RotFromTurns(b))
@@ -55,10 +49,8 @@ func TestRotMulMatchesAngleSum(t *testing.T) {
 	}
 }
 
-// TestRotInvComposesToIdentity checks r.Mul(r.Inv()) against the
-// identity within the same 2^-18 budget.
 func TestRotInvComposesToIdentity(t *testing.T) {
-	const budget = 1 << 14
+	const budget = 1 << 14 // 2⁻¹⁸ per component.
 	for _, a := range []fixed.Q{fixed.FromRatio(1, 3), fixed.MustParse("-0.4"), fixed.FromRatio(7, 9)} {
 		r := fixed.RotFromTurns(a)
 		got := r.Mul(r.Inv())
@@ -71,8 +63,6 @@ func TestRotInvComposesToIdentity(t *testing.T) {
 	}
 }
 
-// TestRotNormalize checks the drift repair after a long chain of Mul,
-// and the zero-value escape hatch.
 func TestRotNormalize(t *testing.T) {
 	step := fixed.RotFromTurns(fixed.FromRatio(1, 100))
 	r := fixed.RotIdentity()
@@ -86,5 +76,8 @@ func TestRotNormalize(t *testing.T) {
 	}
 	if got := (fixed.Rot{}).Normalize(); !got.Cos.Eq(fixed.One()) || !got.Sin.Eq(fixed.Zero()) {
 		t.Errorf("Normalize of the zero Rot = (%v, %v), want the identity", got.Sin, got.Cos)
+	}
+	if got := (fixed.Rot{Sin: fixed.FromRaw(1)}).Normalize(); !got.Sin.Eq(fixed.One()) || !got.Cos.Eq(fixed.Zero()) {
+		t.Errorf("Normalize of the smallest nonzero Rot = (%v, %v), want (1, 0)", got.Sin, got.Cos)
 	}
 }

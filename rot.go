@@ -1,8 +1,6 @@
 package fixed
 
-// Rot is a 2D rotation stored as a unit vector: the sine and cosine of
-// the angle. Composition and application need no trig evaluation, so a
-// solver can chain rotations cheaply and deterministically.
+// Rot is a 2D rotation stored as its sine and cosine.
 //
 // The zero Rot is not a valid rotation; start from RotIdentity or
 // RotFromTurns.
@@ -19,11 +17,6 @@ func RotIdentity() Rot {
 // the kernel and the contract of SinTurns and CosTurns.
 func RotFromTurns(t Q) Rot {
 	return Rot{Sin: SinTurns(t), Cos: CosTurns(t)}
-}
-
-// Turns returns the angle of r in (-1/2, 1/2] turns.
-func (r Rot) Turns() Q {
-	return Atan2Turns(r.Sin, r.Cos)
 }
 
 // Apply rotates the vector v by r.
@@ -49,13 +42,11 @@ func (r Rot) Inv() Rot {
 	return Rot{Sin: r.Sin.Neg(), Cos: r.Cos}
 }
 
-// Normalize rescales r to unit length. Long chains of Mul let the
-// length drift away from one; renormalize periodically inside a
-// solver. A zero r returns the identity.
+// Normalize rescales r to unit length. A zero r returns the identity.
 func (r Rot) Normalize() Rot {
-	n := r.Sin.Mul(r.Sin).Add(r.Cos.Mul(r.Cos)).Sqrt()
-	if n.raw == 0 {
+	if r.Sin.raw == 0 && r.Cos.raw == 0 {
 		return RotIdentity()
 	}
-	return Rot{Sin: r.Sin.Div(n), Cos: r.Cos.Div(n)}
+	sin, cos := unitPair(r.Sin.raw, r.Cos.raw)
+	return Rot{Sin: sin, Cos: cos}
 }

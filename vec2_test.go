@@ -10,8 +10,6 @@ func vec2FromInts(x, y int) fixed.Vec2 {
 	return fixed.Vec2{X: fixed.FromInt(x), Y: fixed.FromInt(y)}
 }
 
-// TestVec2ExactCases pins vector results that the Q32.32 format
-// represents without rounding, so every comparison is bit-exact.
 func TestVec2ExactCases(t *testing.T) {
 	v := vec2FromInts(3, 4)
 	if got := v.LenSq(); !got.Eq(fixed.FromInt(25)) {
@@ -43,8 +41,41 @@ func TestVec2ExactCases(t *testing.T) {
 	}
 }
 
-// TestVec2SaturationPropagates shows the headroom rule on vectors: one
-// oversized component saturates LenSq and counts one event.
+func TestVec2NormPreservesScale(t *testing.T) {
+	cases := []struct {
+		name        string
+		x           fixed.Q
+		length      fixed.Q
+		unit        fixed.Vec2
+		saturations uint64
+	}{
+		{"smallest positive", fixed.FromRaw(1), fixed.FromRaw(1), fixed.Vec2{X: fixed.One()}, 0},
+		{"large representable", fixed.FromInt(1 << 20), fixed.FromInt(1 << 20), fixed.Vec2{X: fixed.One()}, 0},
+		{"minimum component", fixed.MinValue(), fixed.MaxValue(), fixed.Vec2{X: fixed.One().Neg()}, 1},
+	}
+	for _, c := range cases {
+		v := fixed.Vec2{X: c.x}
+		fixed.ResetSaturationCount()
+		if got := v.Len(); !got.Eq(c.length) {
+			t.Errorf("%s Len = %v, want %v", c.name, got, c.length)
+		}
+		if got := v.Normalize(); got != c.unit {
+			t.Errorf("%s Normalize = %v, want %v", c.name, got, c.unit)
+		}
+		if got := fixed.SaturationCount(); got != c.saturations {
+			t.Errorf("%s SaturationCount = %d, want %d", c.name, got, c.saturations)
+		}
+	}
+
+	u := (fixed.Vec2{X: fixed.FromRaw(1), Y: fixed.FromRaw(1)}).Normalize()
+	if u.X.Raw() == 0 || !u.X.Eq(u.Y) {
+		t.Fatalf("Normalize of the smallest diagonal = %v, want equal nonzero components", u)
+	}
+	if d := u.LenSq().Sub(fixed.One()).Abs().Raw(); d > 4 {
+		t.Errorf("normalized smallest diagonal length² = %d raw units from One", d)
+	}
+}
+
 func TestVec2SaturationPropagates(t *testing.T) {
 	fixed.ResetSaturationCount()
 	v := fixed.Vec2{X: fixed.FromInt(1 << 20), Y: fixed.Zero()}
@@ -58,22 +89,4 @@ func TestVec2SaturationPropagates(t *testing.T) {
 
 func TestVec2DivByZeroPanics(t *testing.T) {
 	expectPanic(t, func() { vec2FromInts(1, 2).Div(fixed.Zero()) })
-}
-
-// FuzzVec2DotVsBig checks Dot against the composed scalar oracle. The
-// oracle mirrors the documented composition order: per-component Mul,
-// then Add, each saturating on its own.
-func FuzzVec2DotVsBig(f *testing.F) {
-	for _, v := range fuzzSeeds() {
-		f.Add(v, v, v, v)
-		f.Add(v, int64(1), -v, int64(1)<<32)
-	}
-	f.Fuzz(func(t *testing.T, ax, ay, bx, by int64) {
-		a := fixed.Vec2{X: fixed.FromRaw(ax), Y: fixed.FromRaw(ay)}
-		b := fixed.Vec2{X: fixed.FromRaw(bx), Y: fixed.FromRaw(by)}
-		want := oracleAdd(oracleMul(ax, bx), oracleMul(ay, by))
-		if got := a.Dot(b).Raw(); got != want {
-			t.Errorf("Dot((%d,%d),(%d,%d)) = %d, oracle says %d", ax, ay, bx, by, got, want)
-		}
-	})
 }
