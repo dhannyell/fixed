@@ -1,0 +1,52 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.goarch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            goos: linux
+            runner: ubuntu-latest
+          - goarch: arm64
+            goos: linux
+            runner: ubuntu-24.04-arm
+          - goarch: "386"
+            goos: linux
+            runner: ubuntu-latest
+          - goarch: wasm
+            goos: js
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    env:
+      GOARCH: ${{ matrix.goarch }}
+      GOOS: ${{ matrix.goos }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        if: matrix.goarch == 'amd64'
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'Files need gofmt:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        if: matrix.goarch == 'amd64'
+        run: go vet ./...
+      - name: Configure Wasm runner
+        if: matrix.goarch == 'wasm'
+        run: echo "$(go env GOROOT)/lib/wasm" >> "$GITHUB_PATH"
+      - name: Test
+        run: go test ./...

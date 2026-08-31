@@ -1,0 +1,42 @@
+name: fuzz
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: "Time per fuzz target"
+        required: false
+        default: "120s"
+
+jobs:
+  fuzz-fixed:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - FuzzAddSubVsBig
+          - FuzzMulVsBig
+          - FuzzDivVsBig
+          - FuzzSqrtVsBig
+          - FuzzTextRoundTrip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: fuzz ${{ matrix.target }}
+        run: |
+          go test . \
+            -run '^$' \
+            -fuzz '^${{ matrix.target }}$' \
+            -fuzztime '${{ inputs.fuzztime || '120s' }}'
+      - name: upload fuzz repros on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-repro-fixed-${{ matrix.target }}
+          path: testdata/fuzz/
+          if-no-files-found: ignore
