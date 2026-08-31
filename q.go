@@ -1,6 +1,7 @@
 package fixed
 
 import (
+	"math"
 	"math/bits"
 	"sync/atomic"
 )
@@ -125,22 +126,8 @@ func (q Q) Sqrt() Q {
 	if q.raw < 0 {
 		panic("fixed: square root of a negative value")
 	}
-	hi := uint64(q.raw) >> 32
-	lo := uint64(q.raw) << 32
-
 	// The 96-bit radicand has a root of at most 48 bits.
-	var root, rem uint64
-	for range 64 {
-		rem = rem<<2 | hi>>62
-		hi = hi<<2 | lo>>62
-		lo <<= 2
-		root <<= 1
-		if t := root<<1 | 1; rem >= t {
-			rem -= t
-			root |= 1
-		}
-	}
-	return Q{raw: int64(root)}
+	return Q{raw: int64(isqrt128(uint64(q.raw)>>32, uint64(q.raw)<<32))}
 }
 
 // Neg returns -q. Neg of MinValue saturates to MaxValue.
@@ -277,6 +264,65 @@ func divMag(n, d uint64, neg bool) Q {
 		return Q{raw: rawMax}
 	}
 	return Q{raw: int64(quo)}
+}
+
+// isqrt128 returns floor(sqrt(hi·2⁶⁴+lo)). A hardware square root only
+// seeds the answer; exact 128-bit integer checks settle the floor, so
+// platform float rounding can never reach the result.
+func isqrt128(hi, lo uint64) uint64 {
+	if hi == 0 && lo == 0 {
+		return 0
+	}
+
+	// Near the top of the range the root can equal hi, which the Newton
+	// division below cannot take. Two decrements at most resolve it.
+	if hi >= ^uint64(0)-1 {
+		r := ^uint64(0)
+		for {
+			pHi, pLo := bits.Mul64(r, r)
+			if pHi < hi || (pHi == hi && pLo <= lo) {
+				return r
+			}
+			r--
+		}
+	}
+
+	f := math.Sqrt(float64(hi)*0x1p64 + float64(lo))
+	var x uint64
+	if f >= 0x1p64 {
+		x = ^uint64(0)
+	} else {
+		x = uint64(f)
+	}
+
+	// A root beyond 52 bits outruns float precision: the seed can be off
+	// by thousands of units. One Newton round collapses that to a few.
+	if hi >= 1<<40 {
+		if x <= hi {
+			x = hi + 1
+		}
+		q, _ := bits.Div64(hi, lo, x)
+		sum, carry := bits.Add64(x, q, 0)
+		x = sum>>1 | carry<<63
+	}
+
+	for {
+		pHi, pLo := bits.Mul64(x, x)
+		if pHi > hi || (pHi == hi && pLo > lo) {
+			x--
+			continue
+		}
+		break
+	}
+	for x < ^uint64(0) {
+		y := x + 1
+		pHi, pLo := bits.Mul64(y, y)
+		if pHi > hi || (pHi == hi && pLo > lo) {
+			break
+		}
+		x = y
+	}
+	return x
 }
 
 // saturationEvents records diagnostic data. It does not affect Q values or

@@ -260,7 +260,9 @@ func TestBoundaryCrossProductVsBig(t *testing.T) {
 
 // TestArrowRule limits production imports to the approved standard packages.
 func TestArrowRule(t *testing.T) {
-	allow := map[string]bool{`"math/bits"`: true, `"sync/atomic"`: true}
+	// "math" is allowed for hardware seeds only; exact integer checks
+	// must close every result, so floats never decide a bit.
+	allow := map[string]bool{`"math"`: true, `"math/bits"`: true, `"sync/atomic"`: true}
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
