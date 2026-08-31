@@ -3,6 +3,7 @@ package fixed_test
 import (
 	"math"
 	"math/big"
+	"strconv"
 	"testing"
 
 	"github.com/dhannyell/fixed"
@@ -43,6 +44,19 @@ func TestQ16DivTruncatesTowardZero(t *testing.T) {
 	}
 	if got := fixed.Q16FromInt(-1).Div(fixed.Q16FromInt(3)).Raw(); got != -21845 {
 		t.Errorf("(-1).Div(3) = %d, want -21845", got)
+	}
+	if got := fixed.Q16FromRatio(7, -2).Raw(); got != -(int32(7) << 15) {
+		t.Errorf("Q16FromRatio(7, -2) = %d, want %d", got, -(int32(7) << 15))
+	}
+}
+
+func TestQ16FromRatioHandlesWideInputs(t *testing.T) {
+	if strconv.IntSize < 64 {
+		t.Skip("wide int inputs require a 64-bit architecture")
+	}
+	large := int64(1) << 60
+	if got := fixed.Q16FromRatio(int(large), int(large)); !got.Eq(fixed.Q16One()) {
+		t.Errorf("Q16FromRatio(1<<60, 1<<60) = %d, want One", got.Raw())
 	}
 }
 
