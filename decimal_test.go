@@ -63,3 +63,57 @@ func FuzzTextRoundTrip(f *testing.F) {
 		}
 	})
 }
+
+func TestQ16StringFormatsExactDecimals(t *testing.T) {
+	cases := []struct {
+		q    fixed.Q16
+		want string
+	}{
+		{fixed.Q16FromInt(3), "3"},
+		{fixed.Q16FromRatio(7, 2), "3.5"},
+		{fixed.Q16FromRaw(1), "0.0000152587890625"},
+		{fixed.Q16MinValue(), "-32768"},
+		{fixed.Q16MaxValue(), "32767.9999847412109375"},
+	}
+	for _, c := range cases {
+		if got := c.q.String(); got != c.want {
+			t.Errorf("String(%d) = %q, want %q", c.q.Raw(), got, c.want)
+		}
+	}
+}
+
+func TestQ16MustParseReadsDecimalLiterals(t *testing.T) {
+	cases := []struct {
+		in  string
+		raw int32
+	}{
+		{"1.5", 98304},
+		{"6.25", 409600},
+		{"0.00000762939453125", 1}, // An exact half rounds away from zero.
+		{"-0.00000762939453125", -1},
+		{"0.00000762939453124", 0},
+		{"32768", math.MaxInt32},
+		{"-32768", math.MinInt32},
+	}
+	for _, c := range cases {
+		if got := fixed.Q16MustParse(c.in).Raw(); got != c.raw {
+			t.Errorf("Q16MustParse(%q) = %d, want %d", c.in, got, c.raw)
+		}
+	}
+	// The Q16 parser shares the scanner; one malformed case pins the wiring.
+	t.Run("malformed/6.", func(t *testing.T) {
+		expectPanic(t, func() { fixed.Q16MustParse("6.") })
+	})
+}
+
+func FuzzQ16TextRoundTrip(f *testing.F) {
+	for _, raw := range q16BoundaryRaws() {
+		f.Add(raw)
+	}
+	f.Fuzz(func(t *testing.T, raw int32) {
+		q := fixed.Q16FromRaw(raw)
+		if got := fixed.Q16MustParse(q.String()); !got.Eq(q) {
+			t.Errorf("Q16MustParse(String(%d)) = %d", raw, got.Raw())
+		}
+	})
+}

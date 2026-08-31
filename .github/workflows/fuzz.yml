@@ -22,6 +22,8 @@ jobs:
           - FuzzDivVsBig
           - FuzzSqrtVsBig
           - FuzzTextRoundTrip
+          - FuzzQ16MulVsWidened
+          - FuzzQ16TextRoundTrip
           - FuzzSinCosPythagoras
           - FuzzAtan2SinCosRoundTrip
     steps:

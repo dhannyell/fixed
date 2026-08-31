@@ -71,3 +71,14 @@ func ExampleQ32_Clamp() {
 	// Output:
 	// 100
 }
+
+func ExampleQ16() {
+	// Q16 is the compact format. It converts to and from Q32.
+	price := fixed.Q16FromRatio(5, 2)
+	total := price.Mul(fixed.Q16FromInt(4))
+	fmt.Println(total)
+	fmt.Println(total.ToQ32().Eq(fixed.Q32FromInt(10)))
+	// Output:
+	// 10
+	// true
+}
