@@ -28,12 +28,15 @@ import (
 )
 
 func main() {
-	price := fixed.MustParse("6.25")
-	quantity := fixed.FromRatio(3, 2)
-	total := price.Mul(quantity)
+	a := fixed.Vec2{X: fixed.FromInt(1), Y: fixed.FromInt(2)}
+	b := fixed.Vec2{X: fixed.FromInt(4), Y: fixed.FromInt(6)}
+	distance := a.Distance(b)
 
-	fmt.Println(total)       // 9.375
-	fmt.Println(total.Raw()) // 40265318400
+	quarterTurn := fixed.RotFromTurns(fixed.FromRatio(1, 4))
+	direction := quarterTurn.Apply(fixed.Vec2{X: fixed.One()})
+
+	fmt.Println(distance)                 // 5
+	fmt.Println(direction.X, direction.Y) // 0 1
 }
 ```
 
@@ -41,8 +44,7 @@ func main() {
 
 Floating-point input can already contain small differences caused by an
 earlier computation. The package cannot recover the intended exact value from
-those bits. For this reason, at least initially, support for float input is not planned, 
-`fixed` accepts only explicit inputs:
+those bits. For this reason, `fixed` accepts only explicit inputs:
 
 - `FromInt` for integers.
 - `FromRatio` for exact ratios.
@@ -77,15 +79,42 @@ saturation.
 Every saturation increments a process-wide atomic counter. `SaturationCount`
 provides diagnostics without changing any `Q` value or operation result.
 
+## Vectors and angles
+
+`Vec2` provides the usual 2D operations over `Q`: addition, scaling, dot
+product, length, normalization, distance, and interpolation. `LenSq` follows
+the scalar operation order and can saturate even when the length still fits.
+`Len` uses a 128-bit intermediate and saturates only when the final magnitude
+does not fit. `Normalize` scales the components before squaring them, which
+avoids intermediate overflow and underflow.
+
+Angles use turns instead of radians. `One()` is one complete revolution,
+`Half()` is half a revolution, and `FromRatio(1, 4)` is a quarter turn. This
+maps the fractional bits of `Q` directly onto the circle and avoids reduction
+through an approximation of pi.
+
+`SinTurns`, `CosTurns`, and `Atan2Turns` use committed lookup tables and linear
+interpolation. Their maximum absolute error is 2⁻²⁰. `Rot` stores a rotation as
+its sine and cosine, which makes application, composition, and inversion
+available without another trigonometric lookup. The zero value of `Rot` is not
+a valid rotation; start with `RotIdentity` or `RotFromTurns`.
+
 ## Architecture
 
-`fixed` is a leaf module. Its production code imports only `math/bits` and
+`fixed` is a leaf module. The package imports only `math/bits` and
 `sync/atomic`. This small dependency surface lets applications use the numeric
 type without importing unrelated systems.
 
 The `Q` type is opaque. Constructors control how values enter the package,
 operations own saturation and rounding, and `Raw` is the boundary for exact
 bit access.
+
+The module is one flat package by design. Every public type shares one
+contract, so subpackages would only split the documentation and add import
+noise. File names carry the layers: `q*`/`decimal*` for the scalar, `vec2*`
+and `rot*` for the plane, `trig*` for the kernel. Directories exist only for
+content outside the package interface: `internal/` for tools and `.github/`
+for CI.
 
 The Go implementation defines the bit-level contract. An independent
 implementation must preserve the rounding, saturation, and raw representation

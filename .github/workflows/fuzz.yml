@@ -22,6 +22,8 @@ jobs:
           - FuzzDivVsBig
           - FuzzSqrtVsBig
           - FuzzTextRoundTrip
+          - FuzzSinCosPythagoras
+          - FuzzAtan2SinCosRoundTrip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

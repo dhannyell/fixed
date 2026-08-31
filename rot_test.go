@@ -1,0 +1,83 @@
+package fixed_test
+
+import (
+	"testing"
+
+	"github.com/dhannyell/fixed"
+)
+
+func TestRotQuarterTurnsExact(t *testing.T) {
+	v := fixed.Vec2{X: fixed.FromInt(3), Y: fixed.FromInt(4)}
+	cases := []struct {
+		name string
+		r    fixed.Rot
+		want fixed.Vec2
+	}{
+		{"identity", fixed.RotIdentity(), v},
+		{"quarter", fixed.RotFromTurns(fixed.FromRatio(1, 4)), fixed.Vec2{X: fixed.FromInt(-4), Y: fixed.FromInt(3)}},
+		{"half", fixed.RotFromTurns(fixed.Half()), fixed.Vec2{X: fixed.FromInt(-3), Y: fixed.FromInt(-4)}},
+		{"three quarters", fixed.RotFromTurns(fixed.FromRatio(3, 4)), fixed.Vec2{X: fixed.FromInt(4), Y: fixed.FromInt(-3)}},
+	}
+	for _, c := range cases {
+		got := c.r.Apply(v)
+		if !got.X.Eq(c.want.X) || !got.Y.Eq(c.want.Y) {
+			t.Errorf("%s.Apply(3,4) = (%v, %v), want (%v, %v)", c.name, got.X, got.Y, c.want.X, c.want.Y)
+		}
+	}
+}
+
+func TestRotMulMatchesAngleSum(t *testing.T) {
+	angles := []fixed.Q{
+		fixed.Zero(),
+		fixed.FromRatio(1, 3),
+		fixed.FromRatio(-2, 7),
+		fixed.MustParse("0.123"),
+		fixed.FromRatio(5, 8),
+	}
+	const budget = 1 << 14 // 2⁻¹⁸ per component.
+	for _, a := range angles {
+		for _, b := range angles {
+			got := fixed.RotFromTurns(a).Mul(fixed.RotFromTurns(b))
+			want := fixed.RotFromTurns(a.Add(b))
+			if d := got.Sin.Sub(want.Sin).Abs().Raw(); d > budget {
+				t.Errorf("Mul(%v, %v).Sin drifted %d raw units", a, b, d)
+			}
+			if d := got.Cos.Sub(want.Cos).Abs().Raw(); d > budget {
+				t.Errorf("Mul(%v, %v).Cos drifted %d raw units", a, b, d)
+			}
+		}
+	}
+}
+
+func TestRotInvComposesToIdentity(t *testing.T) {
+	const budget = 1 << 14 // 2⁻¹⁸ per component.
+	for _, a := range []fixed.Q{fixed.FromRatio(1, 3), fixed.MustParse("-0.4"), fixed.FromRatio(7, 9)} {
+		r := fixed.RotFromTurns(a)
+		got := r.Mul(r.Inv())
+		if d := got.Sin.Abs().Raw(); d > budget {
+			t.Errorf("Mul with Inv at %v: Sin = %d raw units from 0", a, d)
+		}
+		if d := got.Cos.Sub(fixed.One()).Abs().Raw(); d > budget {
+			t.Errorf("Mul with Inv at %v: Cos = %d raw units from One", a, d)
+		}
+	}
+}
+
+func TestRotNormalize(t *testing.T) {
+	step := fixed.RotFromTurns(fixed.FromRatio(1, 100))
+	r := fixed.RotIdentity()
+	for range 100 {
+		r = r.Mul(step)
+	}
+	r = r.Normalize()
+	lenSq := r.Sin.Mul(r.Sin).Add(r.Cos.Mul(r.Cos))
+	if d := lenSq.Sub(fixed.One()).Abs().Raw(); d > 4 {
+		t.Errorf("length² after Normalize = %d raw units from One", d)
+	}
+	if got := (fixed.Rot{}).Normalize(); !got.Cos.Eq(fixed.One()) || !got.Sin.Eq(fixed.Zero()) {
+		t.Errorf("Normalize of the zero Rot = (%v, %v), want the identity", got.Sin, got.Cos)
+	}
+	if got := (fixed.Rot{Sin: fixed.FromRaw(1)}).Normalize(); !got.Sin.Eq(fixed.One()) || !got.Cos.Eq(fixed.Zero()) {
+		t.Errorf("Normalize of the smallest nonzero Rot = (%v, %v), want (1, 0)", got.Sin, got.Cos)
+	}
+}
