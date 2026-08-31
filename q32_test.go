@@ -58,27 +58,27 @@ func oracleSqrt(a int64) int64 {
 }
 
 func TestMulAndDivProduceExactBits(t *testing.T) {
-	if got := fixed.One().Mul(fixed.One()); !got.Eq(fixed.One()) {
+	if got := fixed.Q32One().Mul(fixed.Q32One()); !got.Eq(fixed.Q32One()) {
 		t.Errorf("One.Mul(One) = %d, want One", got.Raw())
 	}
-	if got := fixed.Half().Mul(fixed.Half()).Raw(); got != 1<<30 {
+	if got := fixed.Q32Half().Mul(fixed.Q32Half()).Raw(); got != 1<<30 {
 		t.Errorf("Half.Mul(Half) = %d, want %d", got, int64(1)<<30)
 	}
-	if got := fixed.FromInt(3).Div(fixed.FromInt(2)).Raw(); got != 3<<31 {
+	if got := fixed.Q32FromInt(3).Div(fixed.Q32FromInt(2)).Raw(); got != 3<<31 {
 		t.Errorf("3/2 = %d, want %d", got, int64(3)<<31)
 	}
 }
 
 func TestMulFloorsTinyNegativeProducts(t *testing.T) {
 	// The arithmetic shift floors this product. It must not become zero.
-	if got := fixed.FromRaw(-1).Mul(fixed.FromRaw(1)).Raw(); got != -1 {
+	if got := fixed.Q32FromRaw(-1).Mul(fixed.Q32FromRaw(1)).Raw(); got != -1 {
 		t.Errorf("FromRaw(-1).Mul(FromRaw(1)) = %d, want -1", got)
 	}
 }
 
 func TestDivTruncatesTowardZero(t *testing.T) {
 	// Floor gives -1431655766. This result verifies truncation toward zero.
-	if got := fixed.FromRatio(-1, 3).Raw(); got != -1431655765 {
+	if got := fixed.Q32FromRatio(-1, 3).Raw(); got != -1431655765 {
 		t.Errorf("FromRatio(-1, 3) = %d, want -1431655765", got)
 	}
 }
@@ -90,23 +90,23 @@ func TestSaturationClampsAndCounts(t *testing.T) {
 		want fixed.Q32
 	}
 	cases := []saturationCase{
-		{"MaxValue.Add(One)", func() fixed.Q32 { return fixed.MaxValue().Add(fixed.One()) }, fixed.MaxValue()},
-		{"MinValue.Sub(One)", func() fixed.Q32 { return fixed.MinValue().Sub(fixed.One()) }, fixed.MinValue()},
-		{"2^20 * 2^20", func() fixed.Q32 { return fixed.FromInt(1 << 20).Mul(fixed.FromInt(1 << 20)) }, fixed.MaxValue()},
-		{"MaxValue / epsilon", func() fixed.Q32 { return fixed.MaxValue().Div(fixed.FromRaw(1)) }, fixed.MaxValue()},
-		{"FromRatio overflow", func() fixed.Q32 { return fixed.FromRatio(-1<<31, -1) }, fixed.MaxValue()},
-		{"MustParse overflow", func() fixed.Q32 { return fixed.MustParse("2147483648") }, fixed.MaxValue()},
-		{"MinValue.Neg()", func() fixed.Q32 { return fixed.MinValue().Neg() }, fixed.MaxValue()},
-		{"MinValue.Abs()", func() fixed.Q32 { return fixed.MinValue().Abs() }, fixed.MaxValue()},
-		{"MaxValue.Ceil()", func() fixed.Q32 { return fixed.MaxValue().Ceil() }, fixed.MaxValue()},
-		{"MaxValue.Round()", func() fixed.Q32 { return fixed.MaxValue().Round() }, fixed.MaxValue()},
+		{"MaxValue.Add(One)", func() fixed.Q32 { return fixed.Q32MaxValue().Add(fixed.Q32One()) }, fixed.Q32MaxValue()},
+		{"MinValue.Sub(One)", func() fixed.Q32 { return fixed.Q32MinValue().Sub(fixed.Q32One()) }, fixed.Q32MinValue()},
+		{"2^20 * 2^20", func() fixed.Q32 { return fixed.Q32FromInt(1 << 20).Mul(fixed.Q32FromInt(1 << 20)) }, fixed.Q32MaxValue()},
+		{"MaxValue / epsilon", func() fixed.Q32 { return fixed.Q32MaxValue().Div(fixed.Q32FromRaw(1)) }, fixed.Q32MaxValue()},
+		{"FromRatio overflow", func() fixed.Q32 { return fixed.Q32FromRatio(-1<<31, -1) }, fixed.Q32MaxValue()},
+		{"MustParse overflow", func() fixed.Q32 { return fixed.Q32MustParse("2147483648") }, fixed.Q32MaxValue()},
+		{"MinValue.Neg()", func() fixed.Q32 { return fixed.Q32MinValue().Neg() }, fixed.Q32MaxValue()},
+		{"MinValue.Abs()", func() fixed.Q32 { return fixed.Q32MinValue().Abs() }, fixed.Q32MaxValue()},
+		{"MaxValue.Ceil()", func() fixed.Q32 { return fixed.Q32MaxValue().Ceil() }, fixed.Q32MaxValue()},
+		{"MaxValue.Round()", func() fixed.Q32 { return fixed.Q32MaxValue().Round() }, fixed.Q32MaxValue()},
 	}
 	if strconv.IntSize == 64 {
 		largeInt := int64(1) << 40
 		cases = append(cases, saturationCase{
 			"FromInt overflow",
-			func() fixed.Q32 { return fixed.FromInt(int(largeInt)) },
-			fixed.MaxValue(),
+			func() fixed.Q32 { return fixed.Q32FromInt(int(largeInt)) },
+			fixed.Q32MaxValue(),
 		})
 	}
 	for _, c := range cases {
@@ -124,16 +124,16 @@ func TestSaturationClampsAndCounts(t *testing.T) {
 
 func TestExactBoundariesDoNotSaturate(t *testing.T) {
 	fixed.ResetSaturationCount()
-	if got := fixed.MinValue().Sub(fixed.MinValue()); !got.Eq(fixed.Zero()) {
+	if got := fixed.Q32MinValue().Sub(fixed.Q32MinValue()); !got.Eq(fixed.Q32Zero()) {
 		t.Errorf("MinValue.Sub(MinValue) = %d, want Zero", got.Raw())
 	}
-	if got := fixed.MinValue().Div(fixed.One()); !got.Eq(fixed.MinValue()) {
+	if got := fixed.Q32MinValue().Div(fixed.Q32One()); !got.Eq(fixed.Q32MinValue()) {
 		t.Errorf("MinValue.Div(One) = %d, want MinValue", got.Raw())
 	}
-	if got := fixed.FromInt(-1 << 31); !got.Eq(fixed.MinValue()) {
+	if got := fixed.Q32FromInt(-1 << 31); !got.Eq(fixed.Q32MinValue()) {
 		t.Errorf("FromInt(-1<<31) = %d, want MinValue", got.Raw())
 	}
-	if got := fixed.MustParse("-2147483648"); !got.Eq(fixed.MinValue()) {
+	if got := fixed.Q32MustParse("-2147483648"); !got.Eq(fixed.Q32MinValue()) {
 		t.Errorf("MustParse(-2147483648) = %d, want MinValue", got.Raw())
 	}
 	if c := fixed.SaturationCount(); c != 0 {
@@ -153,27 +153,33 @@ func expectPanic(t *testing.T, f func()) {
 
 func TestDomainErrorsPanic(t *testing.T) {
 	t.Run("DivByZero", func(t *testing.T) {
-		expectPanic(t, func() { fixed.One().Div(fixed.Zero()) })
+		expectPanic(t, func() { fixed.Q32One().Div(fixed.Q32Zero()) })
 	})
 	t.Run("FromRatioZeroDenominator", func(t *testing.T) {
-		expectPanic(t, func() { fixed.FromRatio(1, 0) })
+		expectPanic(t, func() { fixed.Q32FromRatio(1, 0) })
 	})
 	t.Run("SqrtOfNegative", func(t *testing.T) {
-		expectPanic(t, func() { fixed.FromInt(-1).Sqrt() })
+		expectPanic(t, func() { fixed.Q32FromInt(-1).Sqrt() })
 	})
 }
 
+func TestGreaterReportsStrictOrder(t *testing.T) {
+	if !fixed.Q32One().Greater(fixed.Q32Zero()) || fixed.Q32Zero().Greater(fixed.Q32Zero()) {
+		t.Error("Greater does not report the strict order")
+	}
+}
+
 func TestSqrtFloorsTheRoot(t *testing.T) {
-	if got := fixed.FromInt(4).Sqrt(); !got.Eq(fixed.FromInt(2)) {
+	if got := fixed.Q32FromInt(4).Sqrt(); !got.Eq(fixed.Q32FromInt(2)) {
 		t.Errorf("Sqrt(4) = %d, want 2", got.Raw())
 	}
-	if got := fixed.FromInt(2).Sqrt().Raw(); got != 0x16A09E667 {
+	if got := fixed.Q32FromInt(2).Sqrt().Raw(); got != 0x16A09E667 {
 		t.Errorf("Sqrt(2) = %#x, want 0x16A09E667", got)
 	}
-	if got := fixed.Zero().Sqrt(); !got.Eq(fixed.Zero()) {
+	if got := fixed.Q32Zero().Sqrt(); !got.Eq(fixed.Q32Zero()) {
 		t.Errorf("Sqrt(0) = %d, want 0", got.Raw())
 	}
-	if got, want := fixed.MaxValue().Sqrt().Raw(), oracleSqrt(math.MaxInt64); got != want {
+	if got, want := fixed.Q32MaxValue().Sqrt().Raw(), oracleSqrt(math.MaxInt64); got != want {
 		t.Errorf("Sqrt(MaxValue) = %d, oracle says %d", got, want)
 	}
 }
@@ -190,7 +196,7 @@ func TestIntegerConversions(t *testing.T) {
 		{-1, 2, -1, 0, -1, 0},
 	}
 	for _, c := range cases {
-		q := fixed.FromRatio(c.num, c.den)
+		q := fixed.Q32FromRatio(c.num, c.den)
 		if got := q.Floor().Int(); got != c.floor {
 			t.Errorf("Floor(%d/%d) = %d, want %d", c.num, c.den, got, c.floor)
 		}
@@ -239,7 +245,7 @@ func TestBoundaryCrossProductVsBig(t *testing.T) {
 	raws := boundaryRaws()
 	for _, a := range raws {
 		for _, b := range raws {
-			qa, qb := fixed.FromRaw(a), fixed.FromRaw(b)
+			qa, qb := fixed.Q32FromRaw(a), fixed.Q32FromRaw(b)
 			if got, want := qa.Add(qb).Raw(), oracleAdd(a, b); got != want {
 				t.Fatalf("Add(%d, %d) = %d, oracle says %d", a, b, got, want)
 			}
@@ -301,7 +307,7 @@ func FuzzAddSubVsBig(f *testing.F) {
 		f.Add(v, int64(1))
 	}
 	f.Fuzz(func(t *testing.T, a, b int64) {
-		qa, qb := fixed.FromRaw(a), fixed.FromRaw(b)
+		qa, qb := fixed.Q32FromRaw(a), fixed.Q32FromRaw(b)
 		if got, want := qa.Add(qb).Raw(), oracleAdd(a, b); got != want {
 			t.Errorf("Add(%d, %d) = %d, oracle says %d", a, b, got, want)
 		}
@@ -321,7 +327,7 @@ func FuzzMulVsBig(f *testing.F) {
 		f.Add(v, int64(1))
 	}
 	f.Fuzz(func(t *testing.T, a, b int64) {
-		qa, qb := fixed.FromRaw(a), fixed.FromRaw(b)
+		qa, qb := fixed.Q32FromRaw(a), fixed.Q32FromRaw(b)
 		if got, want := qa.Mul(qb).Raw(), oracleMul(a, b); got != want {
 			t.Errorf("Mul(%d, %d) = %d, oracle says %d", a, b, got, want)
 		}
@@ -340,7 +346,7 @@ func FuzzDivVsBig(f *testing.F) {
 		if b == 0 {
 			t.Skip()
 		}
-		if got, want := fixed.FromRaw(a).Div(fixed.FromRaw(b)).Raw(), oracleDiv(a, b); got != want {
+		if got, want := fixed.Q32FromRaw(a).Div(fixed.Q32FromRaw(b)).Raw(), oracleDiv(a, b); got != want {
 			t.Errorf("Div(%d, %d) = %d, oracle says %d", a, b, got, want)
 		}
 	})
@@ -354,7 +360,7 @@ func FuzzSqrtVsBig(f *testing.F) {
 		if a < 0 {
 			t.Skip()
 		}
-		if got, want := fixed.FromRaw(a).Sqrt().Raw(), oracleSqrt(a); got != want {
+		if got, want := fixed.Q32FromRaw(a).Sqrt().Raw(), oracleSqrt(a); got != want {
 			t.Errorf("Sqrt(%d) = %d, oracle says %d", a, got, want)
 		}
 	})

@@ -1,9 +1,9 @@
 package fixed
 
-// MustParse parses a decimal literal. It rounds to the nearest Q32 value, with
+// Q32MustParse parses a decimal literal. It rounds to the nearest Q32 value, with
 // exact halves away from zero. It saturates outside the Q32 range and panics on
 // malformed input.
-func MustParse(s string) Q32 {
+func Q32MustParse(s string) Q32 {
 	if s == "" {
 		panic("fixed: malformed literal: " + s)
 	}
@@ -38,9 +38,9 @@ func MustParse(s string) Q32 {
 	if intPart > 1<<31 {
 		saturationEvents.Add(1)
 		if negative {
-			return Q32{raw: rawMin}
+			return Q32{raw: q32RawMin}
 		}
-		return Q32{raw: rawMax}
+		return Q32{raw: q32RawMax}
 	}
 
 	fraction := ""
@@ -51,23 +51,23 @@ func MustParse(s string) Q32 {
 	if negative {
 		if raw > 1<<63 {
 			saturationEvents.Add(1)
-			return Q32{raw: rawMin}
+			return Q32{raw: q32RawMin}
 		}
 		return Q32{raw: -int64(raw)} // A magnitude of 1<<63 converts to MinValue.
 	}
-	if raw > rawMax {
+	if raw > q32RawMax {
 		saturationEvents.Add(1)
-		return Q32{raw: rawMax}
+		return Q32{raw: q32RawMax}
 	}
 	return Q32{raw: int64(raw)}
 }
 
 // String returns the exact canonical decimal form of q, such as "-6.25".
-// For every q, MustParse(q.String()) == q. Use Raw for the exact bit pattern.
+// For every q, Q32MustParse(q.String()) == q. Use Raw for the exact bit pattern.
 func (q Q32) String() string {
 	n := magnitude(q.raw)
 	intPart := n >> 32
-	fraction := n & (rawOne - 1)
+	fraction := n & (q32RawOne - 1)
 
 	var buf []byte
 	if q.raw < 0 {
@@ -90,7 +90,7 @@ func (q Q32) String() string {
 		for fraction != 0 {
 			fraction *= 10
 			buf = append(buf, byte('0'+fraction>>32))
-			fraction &= rawOne - 1
+			fraction &= q32RawOne - 1
 		}
 	}
 	return string(buf)

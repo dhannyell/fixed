@@ -41,9 +41,9 @@ func (v Vec2) LenSq() Q32 {
 // Len returns the length of the vector, floored to the Q32.32 grid.
 func (v Vec2) Len() Q32 {
 	raw := hypotRaw(v.X.raw, v.Y.raw)
-	if raw > uint64(rawMax) {
+	if raw > uint64(q32RawMax) {
 		saturationEvents.Add(1)
-		return MaxValue()
+		return Q32MaxValue()
 	}
 	return Q32{raw: int64(raw)}
 }

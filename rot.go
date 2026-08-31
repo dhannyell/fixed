@@ -10,7 +10,7 @@ type Rot struct {
 
 // RotIdentity returns the rotation by zero turns.
 func RotIdentity() Rot {
-	return Rot{Sin: Q32{}, Cos: One()}
+	return Rot{Sin: Q32{}, Cos: Q32One()}
 }
 
 // RotFromTurns returns the rotation by the angle t in turns. It shares
