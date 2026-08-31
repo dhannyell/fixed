@@ -6,31 +6,47 @@ on:
   pull_request:
 
 jobs:
-  # The boundary oracle must pass on every architecture: amd64 and
-  # arm64 via the OS matrix, 386 for the 32-bit int paths.
   test:
+    name: test (${{ matrix.goarch }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-      - run: test -z "$(gofmt -l .)"
-        shell: bash
-      - run: go vet ./...
-      - run: go test ./...
-
-  test-386:
-    runs-on: ubuntu-latest
+        include:
+          - goarch: amd64
+            goos: linux
+            runner: ubuntu-latest
+          - goarch: arm64
+            goos: linux
+            runner: ubuntu-24.04-arm
+          - goarch: "386"
+            goos: linux
+            runner: ubuntu-latest
+          - goarch: wasm
+            goos: js
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     env:
-      GOARCH: "386"
+      GOARCH: ${{ matrix.goarch }}
+      GOOS: ${{ matrix.goos }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: go test ./...
+      - name: Check formatting
+        if: matrix.goarch == 'amd64'
+        shell: bash
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            printf 'Files need gofmt:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        if: matrix.goarch == 'amd64'
+        run: go vet ./...
+      - name: Configure Wasm runner
+        if: matrix.goarch == 'wasm'
+        run: echo "$(go env GOROOT)/lib/wasm" >> "$GITHUB_PATH"
+      - name: Test
+        run: go test ./...
