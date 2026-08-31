@@ -35,7 +35,7 @@ func FromInt(i int) Q {
 // It panics when den is zero.
 func FromRatio(num, den int) Q {
 	if den == 0 {
-		panic("fixed: division by zero")
+		panicDivZero()
 	}
 	return divMag(magnitude(int64(num)), magnitude(int64(den)), (num < 0) != (den < 0))
 }
@@ -115,9 +115,16 @@ func (q Q) Mul(o Q) Q {
 // It panics when o is zero.
 func (q Q) Div(o Q) Q {
 	if o.raw == 0 {
-		panic("fixed: division by zero")
+		panicDivZero()
 	}
-	return divMag(magnitude(q.raw), magnitude(o.raw), (q.raw < 0) != (o.raw < 0))
+	n, d := magnitude(q.raw), magnitude(o.raw)
+	neg := (q.raw < 0) != (o.raw < 0)
+	hi, lo := n>>32, n<<32
+	if hi >= d {
+		return saturatedQuotient(neg)
+	}
+	quo, _ := bits.Div64(hi, lo, d)
+	return signedQuotient(quo, neg)
 }
 
 // Sqrt returns floor(sqrt(q)). It panics when q is negative.
@@ -234,24 +241,26 @@ func (q Q) Int() int {
 }
 
 func magnitude(v int64) uint64 {
-	if v < 0 {
-		return -uint64(v)
-	}
-	return uint64(v)
+	// Branchless absolute value; MinInt64 maps to 2⁶³ unchanged.
+	m := uint64(v >> 63)
+	return (uint64(v) ^ m) - m
 }
 
-// divMag returns the signed Q32.32 quotient of magnitudes n and d. It
-// truncates toward zero and saturates. The caller must reject d == 0.
-func divMag(n, d uint64, neg bool) Q {
-	hi, lo := n>>32, n<<32
-	if hi >= d {
-		saturationEvents.Add(1)
-		if neg {
-			return Q{raw: rawMin}
-		}
-		return Q{raw: rawMax}
+func panicDivZero() {
+	panic("fixed: division by zero")
+}
+
+// saturatedQuotient handles a quotient at or beyond 2³², off the hot path.
+func saturatedQuotient(neg bool) Q {
+	saturationEvents.Add(1)
+	if neg {
+		return Q{raw: rawMin}
 	}
-	quo, _ := bits.Div64(hi, lo, d)
+	return Q{raw: rawMax}
+}
+
+// signedQuotient applies the sign and the two output saturations.
+func signedQuotient(quo uint64, neg bool) Q {
 	if neg {
 		if quo > 1<<63 {
 			saturationEvents.Add(1)
@@ -264,6 +273,17 @@ func divMag(n, d uint64, neg bool) Q {
 		return Q{raw: rawMax}
 	}
 	return Q{raw: int64(quo)}
+}
+
+// divMag returns the signed Q32.32 quotient of magnitudes n and d. It
+// truncates toward zero and saturates. The caller must reject d == 0.
+func divMag(n, d uint64, neg bool) Q {
+	hi, lo := n>>32, n<<32
+	if hi >= d {
+		return saturatedQuotient(neg)
+	}
+	quo, _ := bits.Div64(hi, lo, d)
+	return signedQuotient(quo, neg)
 }
 
 // isqrt128 returns floor(sqrt(hi·2⁶⁴+lo)). A hardware square root only
