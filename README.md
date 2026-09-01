@@ -89,27 +89,35 @@ result.
 
 ## Cost of operations
 
-The contract promises bits, not speed. The Q32 numbers below are a guide for
-design choices on one machine: AMD Ryzen 7 5800X3D (amd64), Go 1.26.4,
-`go test -bench . -count=10` summarized with benchstat. Variation stayed
-under ±12%.
+The contract promises bits, not speed. The numbers below are a guide for
+design choices on one machine: AMD Ryzen 7 5800X3D (amd64), Go 1.26.4. They
+are medians of ten runs with `-benchtime=500ms`; Windows scheduling produced
+occasional high outliers that the median excludes.
 
 | Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) |
 | --- | --- | --- | --- |
-| `Add` | 0.5 | 0.5 | 2,100 |
-| `Mul` | 2.8 | 1.8 | 570 |
-| `Div` | 4.7 | 3.0 | 330 |
-| `Sqrt` | 13.1 | 6.2 | 160 |
-| `Vec2.Len` | 15.9 | 12.8 | 78 |
-| `SinTurns` + `CosTurns` | — | 4.2 per pair | 240 pairs |
+| `Q16.Add` | 0.5 | 0.5 | 2,000 |
+| `Q16.Mul` | 1.7 | 0.8 | 1,200 |
+| `Q16.Div` | 3.3 | 1.1 | 910 |
+| `Q16.Sqrt` | 10.3 | 3.2 | 310 |
+| `Q32.Add` | 0.4 | 0.5 | 1,900 |
+| `Q32.Mul` | 2.9 | 2.0 | 490 |
+| `Q32.Div` | 4.7 | 3.1 | 330 |
+| `Q32.Sqrt` | 13.6 | 6.1 | 160 |
+| `Vec2.Len` | 16.0 | 13.1 | 76 |
+| `Vec2.Normalize` | 28.9 | 19.7 | 51 |
+| `Vec2.Normalize` axial | 14.7 | 13.2 | 76 |
+| `Rot.Normalize` | 29.0 | 21.4 | 47 |
+| `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs |
+| `RotFromTurns` | — | 3.5 | 280 |
 
 Read each column alone; the columns measure different situations. Latency is
 the cost when each result feeds the next operation, as in an iterative
 solver. Throughput is the cost when independent operations overlap in the
 pipeline, as in a loop over many values. The rate column is the reciprocal of
-the throughput column, rounded to two digits; use it to size a frame budget. Each latency chain also contains one cheap
-companion operation that keeps the value in domain; `bench_test.go` shows the
-exact chains.
+the throughput column, rounded to two digits; use it to size a frame budget.
+Each latency chain also contains one cheap companion operation that keeps the
+value in domain; `bench_test.go` shows the exact chains.
 
 Two portability notes. `Div` costs more on arm64, because the 128-bit
 division is a software routine there. `Sqrt` does not divide on any

@@ -26,6 +26,15 @@ func TestRotQuarterTurnsExact(t *testing.T) {
 	}
 }
 
+func TestRotFromTurnsMatchesSeparateSineAndCosine(t *testing.T) {
+	for _, raw := range []int64{0, 1, -1, 1 << 30, 1 << 31, 3 << 30, -1 << 32, 0x55555555} {
+		r := fixed.RotFromTurns(fixed.Q32FromRaw(raw))
+		if !r.Sin.Eq(fixed.SinTurns(fixed.Q32FromRaw(raw))) || !r.Cos.Eq(fixed.CosTurns(fixed.Q32FromRaw(raw))) {
+			t.Errorf("RotFromTurns(%d) = (%d, %d), want (%d, %d)", raw, r.Sin.Raw(), r.Cos.Raw(), fixed.SinTurns(fixed.Q32FromRaw(raw)).Raw(), fixed.CosTurns(fixed.Q32FromRaw(raw)).Raw())
+		}
+	}
+}
+
 func TestRotMulMatchesAngleSum(t *testing.T) {
 	angles := []fixed.Q32{
 		fixed.Q32Zero(),

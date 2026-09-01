@@ -16,7 +16,8 @@ func RotIdentity() Rot {
 // RotFromTurns returns the rotation by the angle t in turns. It shares
 // the kernel and the contract of SinTurns and CosTurns.
 func RotFromTurns(t Q32) Rot {
-	return Rot{Sin: SinTurns(t), Cos: CosTurns(t)}
+	sin, cos := sinCosFrac(uint32(t.raw))
+	return Rot{Sin: Q32{raw: sin}, Cos: Q32{raw: cos}}
 }
 
 // Apply rotates the vector v by r.

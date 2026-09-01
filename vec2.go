@@ -101,6 +101,9 @@ func unitPair(x, y int64) (Q32, Q32) {
 		sy = Q32{raw: signedUnit(y < 0)}
 	}
 	n := sx.Mul(sx).Add(sy.Mul(sy)).Sqrt()
+	if n.raw == q32RawOne {
+		return sx, sy
+	}
 	return sx.Div(n), sy.Div(n)
 }
 

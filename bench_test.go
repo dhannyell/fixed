@@ -22,6 +22,17 @@ func BenchmarkSinCosTurns(b *testing.B) {
 	benchSinkQ32 = acc
 }
 
+func BenchmarkRotFromTurns(b *testing.B) {
+	var acc int64
+	u := int64(0)
+	for range b.N {
+		r := fixed.RotFromTurns(fixed.Q32FromRaw(u))
+		acc += r.Sin.Raw() + r.Cos.Raw()
+		u += 2654435761
+	}
+	benchSinkQ32 = acc
+}
+
 // Throughput benchmarks accumulate into a sink, so iterations overlap in
 // the pipeline. Latency benchmarks feed each result into the next call and
 // measure the dependent cost one caller pays. Do not compare the two.
@@ -239,6 +250,26 @@ func BenchmarkVec2NormalizeLatency(b *testing.B) {
 	for range b.N {
 		n := v.Normalize()
 		v = fixed.Vec2{X: n.Y.Mul(scale), Y: n.X.Mul(scale)}
+	}
+	benchSinkQ32 = v.X.Raw()
+}
+
+func BenchmarkVec2NormalizeAxialThroughput(b *testing.B) {
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		v := fixed.Vec2{X: fixed.Q32FromRaw(u), Y: fixed.Q32Zero()}
+		n := v.Normalize()
+		acc += n.X.Raw() + n.Y.Raw()
+		u += 2654435761
+	}
+	benchSinkQ32 = acc
+}
+
+func BenchmarkVec2NormalizeAxialLatency(b *testing.B) {
+	v := fixed.Vec2{X: fixed.Q32FromInt(300), Y: fixed.Q32Zero()}
+	for range b.N {
+		v = fixed.Vec2{X: v.Normalize().X.Mul(fixed.Q32FromInt(300)), Y: fixed.Q32Zero()}
 	}
 	benchSinkQ32 = v.X.Raw()
 }

@@ -65,6 +65,16 @@ func atanLerp(r uint64) int64 {
 func sinFrac(u uint32) int64 {
 	quad := u >> 30
 	pos := u & (1<<30 - 1)
+	return sinQuadrant(quad, pos)
+}
+
+func sinCosFrac(u uint32) (int64, int64) {
+	quad := u >> 30
+	pos := u & (1<<30 - 1)
+	return sinQuadrant(quad, pos), sinQuadrant((quad+1)&3, pos)
+}
+
+func sinQuadrant(quad, pos uint32) int64 {
 	if quad&1 == 1 {
 		pos = 1<<30 - pos
 	}
