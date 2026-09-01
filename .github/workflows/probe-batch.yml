@@ -1,0 +1,80 @@
+# Disposable workflow. It belongs to the probe/batch branch and never reaches
+# main. Two questions: do the NEON kernels work on real arm64 hardware, and
+# does any hosted amd64 runner offer AVX-512?
+name: probe-batch
+
+on:
+  push:
+    branches: [probe/batch]
+  workflow_dispatch:
+
+env:
+  GOEXPERIMENT: simd
+
+jobs:
+  arm64:
+    name: arm64 NEON
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+          check-latest: true
+      - name: Inventory
+        run: |
+          go version
+          uname -srm
+          grep -m1 -E 'model name|Features' /proc/cpuinfo || true
+          grep -m1 'Features' /proc/cpuinfo || true
+          nproc
+      - name: Parity
+        # add16NEON and add16WrapNEON have never executed on any machine.
+        run: go test -count=1 -run 'Batch|Axpy' -v ./...
+      - name: Full suite
+        run: go test -count=1 ./...
+      - name: Fuzz smoke
+        run: go test -run 'FuzzBatchAdd16VsScalar' -fuzz 'FuzzBatchAdd16VsScalar' -fuzztime 45s .
+      - name: Bench
+        # Hosted runners share hardware. These numbers rank the kernels on
+        # arm64; they do not decide a gate.
+        run: go test -count=6 -benchtime 200ms -run '^$' -bench 'BenchmarkBatch' . | tee bench-arm64.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-arm64
+          path: bench-arm64.txt
+
+  amd64:
+    name: amd64 draw ${{ matrix.draw }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        draw: [1, 2, 3, 4, 5, 6, 7, 8]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+          check-latest: true
+      - name: Inventory
+        # The runner pool is mixed. Each draw samples one allocation.
+        run: |
+          go version
+          grep -m1 'model name' /proc/cpuinfo
+          if grep -qm1 ' avx512f ' /proc/cpuinfo; then
+            echo "AVX512=yes"
+            grep -m1 -o 'avx512[a-z0-9_]*' /proc/cpuinfo | sort -u | tr '\n' ' '
+            echo
+          else
+            echo "AVX512=no"
+          fi
+          grep -qm1 ' avx2 ' /proc/cpuinfo && echo "AVX2=yes" || echo "AVX2=no"
+      - name: Parity
+        run: go test -count=1 -run 'Batch|Axpy' ./...
+      - name: Bench
+        run: go test -count=6 -benchtime 200ms -run '^$' -bench 'BenchmarkBatch' . | tee bench-amd64-${{ matrix.draw }}.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-amd64-${{ matrix.draw }}
+          path: bench-amd64-${{ matrix.draw }}.txt
