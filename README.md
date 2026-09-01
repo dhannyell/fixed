@@ -101,13 +101,16 @@ occasional high outliers that the median excludes.
 | `Q16.Div` | 3.3 | 1.1 | 910 | 1.35× |
 | `Q16.Sqrt` | 10.3 | 3.2 | 310 | 3.05× |
 | `Q32.Add` | 0.4 | 0.5 | 1,900 | 0.73× |
-| `Q32.Mul` | 2.9 | 2.0 | 490 | 2.46× |
+| `Q32.Mul` | 2.8 | 1.4 | 690 | 2.14× |
 | `Q32.Div` | 4.7 | 3.1 | 330 | 2.38× |
 | `Q32.Sqrt` | 13.6 | 6.1 | 160 | 2.65× |
+| `Vec2.Dot` | 3.3 | 3.4 | 290 | 5.35× |
 | `Vec2.Len` | 16.0 | 13.1 | 76 | 3.47× |
-| `Vec2.Normalize` | 28.9 | 19.7 | 51 | 4.91× |
-| `Vec2.Normalize` axial | 14.7 | 13.2 | 76 | 3.92× |
-| `Rot.Normalize` | 29.0 | 21.4 | 47 | 5.06× |
+| `Vec2.Normalize` | 26.4 | 18.3 | 55 | 4.82× |
+| `Vec2.Normalize` axial | 12.5 | 11.4 | 87 | 3.80× |
+| `Rot.Apply` | 5.5 | 5.9 | 170 | 7.88× |
+| `Rot.Mul` | 5.6 | 6.1 | 160 | 8.18× |
+| `Rot.Normalize` | 26.7 | 18.5 | 54 | 4.79× |
 | `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs | 0.39× |
 | `RotFromTurns` | — | 3.5 | 280 | 0.36× |
 

@@ -252,6 +252,76 @@ func BenchmarkCompareVec2NormalizeAxial(b *testing.B) {
 	})
 }
 
+func BenchmarkCompareVec2Dot(b *testing.B) {
+	q, f := compareQ32Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		base := fixed.Vec2{X: fixed.Q32FromRatio(255, 256), Y: fixed.Q32FromRatio(1, 256)}
+		var acc int64
+		for i := range b.N {
+			j := i & compareMask
+			acc += (fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]}).Dot(base).Raw()
+		}
+		benchSinkQ32 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		const bx, by = 255.0 / 256.0, 1.0 / 256.0
+		var acc float64
+		for i := range b.N {
+			j := i & compareMask
+			acc += f[j]*bx + f[(j*31)&compareMask]*by
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
+func BenchmarkCompareRotApply(b *testing.B) {
+	q, f := compareQ32Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		r := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
+		var acc int64
+		for i := range b.N {
+			j := i & compareMask
+			w := r.Apply(fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]})
+			acc += w.X.Raw() + w.Y.Raw()
+		}
+		benchSinkQ32 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		sin, cos := math.Sincos(2 * math.Pi / 12)
+		var acc float64
+		for i := range b.N {
+			j := i & compareMask
+			x, y := f[j], f[(j*31)&compareMask]
+			acc += cos*x - sin*y + sin*x + cos*y
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
+func BenchmarkCompareRotMul(b *testing.B) {
+	q, f := compareQ32Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		step := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
+		var acc int64
+		for i := range b.N {
+			j := i & compareMask
+			n := (fixed.Rot{Sin: q[j], Cos: q[(j*31)&compareMask]}).Mul(step)
+			acc += n.Sin.Raw() + n.Cos.Raw()
+		}
+		benchSinkQ32 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		sin2, cos2 := math.Sincos(2 * math.Pi / 12)
+		var acc float64
+		for i := range b.N {
+			j := i & compareMask
+			sin1, cos1 := f[j], f[(j*31)&compareMask]
+			acc += sin1*cos2 + cos1*sin2 + cos1*cos2 - sin1*sin2
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
 func BenchmarkCompareRotNormalize(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {

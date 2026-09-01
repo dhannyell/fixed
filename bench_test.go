@@ -208,6 +208,29 @@ func BenchmarkQ16SqrtLatency(b *testing.B) {
 	benchSinkQ16 = int64(x.Raw())
 }
 
+func BenchmarkVec2DotThroughput(b *testing.B) {
+	// The base is inside the unit box, so no product or sum saturates.
+	base := fixed.Vec2{X: fixed.Q32FromRatio(255, 256), Y: fixed.Q32FromRatio(1, 256)}
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		v := fixed.Vec2{X: fixed.Q32FromRaw(u), Y: fixed.Q32FromRaw(u * 31)}
+		acc += v.Dot(base).Raw()
+		u += 2654435761
+	}
+	benchSinkQ32 = acc
+}
+
+func BenchmarkVec2DotLatency(b *testing.B) {
+	// x converges to a fixed point near 1 and stays in domain.
+	base := fixed.Vec2{X: fixed.Q32FromRatio(255, 256), Y: fixed.Q32FromRatio(1, 256)}
+	v := fixed.Vec2{X: fixed.Q32FromInt(3), Y: fixed.Q32One()}
+	for range b.N {
+		v = fixed.Vec2{X: v.Dot(base), Y: fixed.Q32One()}
+	}
+	benchSinkQ32 = v.X.Raw()
+}
+
 func BenchmarkVec2LenThroughput(b *testing.B) {
 	var acc int64
 	u := int64(1)
@@ -294,4 +317,51 @@ func BenchmarkRotNormalizeLatency(b *testing.B) {
 		r = fixed.Rot{Sin: n.Cos.Mul(scale), Cos: n.Sin.Mul(scale)}
 	}
 	benchSinkQ32 = r.Sin.Raw()
+}
+
+func BenchmarkRotApplyThroughput(b *testing.B) {
+	r := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		v := fixed.Vec2{X: fixed.Q32FromRaw(u), Y: fixed.Q32FromRaw(-u)}
+		w := r.Apply(v)
+		acc += w.X.Raw() + w.Y.Raw()
+		u += 2654435761
+	}
+	benchSinkQ32 = acc
+}
+
+func BenchmarkRotApplyLatency(b *testing.B) {
+	// Rotation preserves the length and each floor can only shrink it,
+	// so v stays in domain.
+	r := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
+	v := fixed.Vec2{X: fixed.Q32One(), Y: fixed.Q32Half()}
+	for range b.N {
+		v = r.Apply(v)
+	}
+	benchSinkQ32 = v.X.Raw() + v.Y.Raw()
+}
+
+func BenchmarkRotMulThroughput(b *testing.B) {
+	step := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		r := fixed.Rot{Sin: fixed.Q32FromRaw(u), Cos: fixed.Q32FromRaw(-u)}
+		n := r.Mul(step)
+		acc += n.Sin.Raw() + n.Cos.Raw()
+		u += 2654435761
+	}
+	benchSinkQ32 = acc
+}
+
+func BenchmarkRotMulLatency(b *testing.B) {
+	// Unit rotations compose into unit rotations; floors only shrink.
+	step := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
+	r := fixed.RotIdentity()
+	for range b.N {
+		r = r.Mul(step)
+	}
+	benchSinkQ32 = r.Sin.Raw() + r.Cos.Raw()
 }

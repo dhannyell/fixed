@@ -99,10 +99,8 @@ func (q Q32) Mul(o Q32) Q32 {
 	res := int64(hi<<32 | lo>>32)
 	if int64(hi)>>32 != res>>63 {
 		saturationEvents.Add(1)
-		if (q.raw >= 0) == (o.raw >= 0) {
-			return Q32{raw: q32RawMax}
-		}
-		return Q32{raw: q32RawMin}
+		// A negative product flips every bit of Max to give Min.
+		return Q32{raw: q32RawMax ^ (int64(hi) >> 63)}
 	}
 	return Q32{raw: res}
 }
