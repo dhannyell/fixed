@@ -94,22 +94,22 @@ design choices on one machine: AMD Ryzen 7 5800X3D (amd64), Go 1.26.4. They
 are medians of ten runs with `-benchtime=500ms`; Windows scheduling produced
 occasional high outliers that the median excludes.
 
-| Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) |
-| --- | --- | --- | --- |
-| `Q16.Add` | 0.5 | 0.5 | 2,000 |
-| `Q16.Mul` | 1.7 | 0.8 | 1,200 |
-| `Q16.Div` | 3.3 | 1.1 | 910 |
-| `Q16.Sqrt` | 10.3 | 3.2 | 310 |
-| `Q32.Add` | 0.4 | 0.5 | 1,900 |
-| `Q32.Mul` | 2.9 | 2.0 | 490 |
-| `Q32.Div` | 4.7 | 3.1 | 330 |
-| `Q32.Sqrt` | 13.6 | 6.1 | 160 |
-| `Vec2.Len` | 16.0 | 13.1 | 76 |
-| `Vec2.Normalize` | 28.9 | 19.7 | 51 |
-| `Vec2.Normalize` axial | 14.7 | 13.2 | 76 |
-| `Rot.Normalize` | 29.0 | 21.4 | 47 |
-| `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs |
-| `RotFromTurns` | — | 3.5 | 280 |
+| Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) | Fixed / float throughput |
+| --- | --- | --- | --- | --- |
+| `Q16.Add` | 0.5 | 0.5 | 2,000 | 0.83× |
+| `Q16.Mul` | 1.7 | 0.8 | 1,200 | 1.30× |
+| `Q16.Div` | 3.3 | 1.1 | 910 | 1.35× |
+| `Q16.Sqrt` | 10.3 | 3.2 | 310 | 3.05× |
+| `Q32.Add` | 0.4 | 0.5 | 1,900 | 0.73× |
+| `Q32.Mul` | 2.9 | 2.0 | 490 | 2.46× |
+| `Q32.Div` | 4.7 | 3.1 | 330 | 2.38× |
+| `Q32.Sqrt` | 13.6 | 6.1 | 160 | 2.65× |
+| `Vec2.Len` | 16.0 | 13.1 | 76 | 3.47× |
+| `Vec2.Normalize` | 28.9 | 19.7 | 51 | 4.91× |
+| `Vec2.Normalize` axial | 14.7 | 13.2 | 76 | 3.92× |
+| `Rot.Normalize` | 29.0 | 21.4 | 47 | 5.06× |
+| `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs | 0.39× |
+| `RotFromTurns` | — | 3.5 | 280 | 0.36× |
 
 Read each column alone; the columns measure different situations. Latency is
 the cost when each result feeds the next operation, as in an iterative
@@ -118,6 +118,17 @@ pipeline, as in a loop over many values. The rate column is the reciprocal of
 the throughput column, rounded to two digits; use it to size a frame budget.
 Each latency chain also contains one cheap companion operation that keeps the
 value in domain; `bench_test.go` shows the exact chains.
+
+The comparison column comes from paired benchmarks over the same prebuilt
+inputs: Q16 is compared with `float32`, while Q32, vectors, and rotations are
+compared with `float64`. A value below 1× means fixed was faster; a value above
+1× is the fixed-point penalty. These safe-domain float kernels do not reproduce
+the package's saturation, rounding, or cross-architecture bit contract. Run
+them with:
+
+```sh
+go test -run '^$' -bench '^BenchmarkCompare' -benchtime=500ms -count=10
+```
 
 Two portability notes. `Div` costs more on arm64, because the 128-bit
 division is a software routine there. `Sqrt` does not divide on any
