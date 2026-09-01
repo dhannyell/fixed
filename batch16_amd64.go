@@ -13,13 +13,14 @@ import (
 // build off a CPU that lacks the instructions.
 
 // selectKernels returns the kernels for this CPU.
-//
-// Inputs: archsimd.X86.AVX2() and archsimd.X86.AVX512(), both bool.
-// Available adds: add16AVX2 (256-bit) and add16Scalar. Mul stays scalar until
-// its vector kernel lands. An AVX-512 tier is not written yet.
 func selectKernels() batchKernels {
-	// TODO(human): order the tiers and leave room for an AVX-512 step.
-	return batchKernels{add: add16Scalar, mul: mul16Scalar}
+	k := batchKernels{add: add16Scalar, mul: mul16Scalar}
+	// Tiers widen downward. An AVX-512 add belongs in a branch above this one,
+	// guarded by archsimd.X86.AVX512(), once a machine can measure it.
+	if archsimd.X86.AVX2() {
+		k.add = add16AVX2
+	}
+	return k
 }
 
 // rawInt32 reinterprets a Q16 slice as int32. Q16 is struct{raw int32}, so the
