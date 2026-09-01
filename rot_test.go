@@ -7,16 +7,16 @@ import (
 )
 
 func TestRotQuarterTurnsExact(t *testing.T) {
-	v := fixed.Vec2{X: fixed.FromInt(3), Y: fixed.FromInt(4)}
+	v := fixed.Vec2{X: fixed.Q32FromInt(3), Y: fixed.Q32FromInt(4)}
 	cases := []struct {
 		name string
 		r    fixed.Rot
 		want fixed.Vec2
 	}{
 		{"identity", fixed.RotIdentity(), v},
-		{"quarter", fixed.RotFromTurns(fixed.FromRatio(1, 4)), fixed.Vec2{X: fixed.FromInt(-4), Y: fixed.FromInt(3)}},
-		{"half", fixed.RotFromTurns(fixed.Half()), fixed.Vec2{X: fixed.FromInt(-3), Y: fixed.FromInt(-4)}},
-		{"three quarters", fixed.RotFromTurns(fixed.FromRatio(3, 4)), fixed.Vec2{X: fixed.FromInt(4), Y: fixed.FromInt(-3)}},
+		{"quarter", fixed.RotFromTurns(fixed.Q32FromRatio(1, 4)), fixed.Vec2{X: fixed.Q32FromInt(-4), Y: fixed.Q32FromInt(3)}},
+		{"half", fixed.RotFromTurns(fixed.Q32Half()), fixed.Vec2{X: fixed.Q32FromInt(-3), Y: fixed.Q32FromInt(-4)}},
+		{"three quarters", fixed.RotFromTurns(fixed.Q32FromRatio(3, 4)), fixed.Vec2{X: fixed.Q32FromInt(4), Y: fixed.Q32FromInt(-3)}},
 	}
 	for _, c := range cases {
 		got := c.r.Apply(v)
@@ -26,13 +26,22 @@ func TestRotQuarterTurnsExact(t *testing.T) {
 	}
 }
 
+func TestRotFromTurnsMatchesSeparateSineAndCosine(t *testing.T) {
+	for _, raw := range []int64{0, 1, -1, 1 << 30, 1 << 31, 3 << 30, -1 << 32, 0x55555555} {
+		r := fixed.RotFromTurns(fixed.Q32FromRaw(raw))
+		if !r.Sin.Eq(fixed.SinTurns(fixed.Q32FromRaw(raw))) || !r.Cos.Eq(fixed.CosTurns(fixed.Q32FromRaw(raw))) {
+			t.Errorf("RotFromTurns(%d) = (%d, %d), want (%d, %d)", raw, r.Sin.Raw(), r.Cos.Raw(), fixed.SinTurns(fixed.Q32FromRaw(raw)).Raw(), fixed.CosTurns(fixed.Q32FromRaw(raw)).Raw())
+		}
+	}
+}
+
 func TestRotMulMatchesAngleSum(t *testing.T) {
-	angles := []fixed.Q{
-		fixed.Zero(),
-		fixed.FromRatio(1, 3),
-		fixed.FromRatio(-2, 7),
-		fixed.MustParse("0.123"),
-		fixed.FromRatio(5, 8),
+	angles := []fixed.Q32{
+		fixed.Q32Zero(),
+		fixed.Q32FromRatio(1, 3),
+		fixed.Q32FromRatio(-2, 7),
+		fixed.Q32MustParse("0.123"),
+		fixed.Q32FromRatio(5, 8),
 	}
 	const budget = 1 << 14 // 2⁻¹⁸ per component.
 	for _, a := range angles {
@@ -51,33 +60,33 @@ func TestRotMulMatchesAngleSum(t *testing.T) {
 
 func TestRotInvComposesToIdentity(t *testing.T) {
 	const budget = 1 << 14 // 2⁻¹⁸ per component.
-	for _, a := range []fixed.Q{fixed.FromRatio(1, 3), fixed.MustParse("-0.4"), fixed.FromRatio(7, 9)} {
+	for _, a := range []fixed.Q32{fixed.Q32FromRatio(1, 3), fixed.Q32MustParse("-0.4"), fixed.Q32FromRatio(7, 9)} {
 		r := fixed.RotFromTurns(a)
 		got := r.Mul(r.Inv())
 		if d := got.Sin.Abs().Raw(); d > budget {
 			t.Errorf("Mul with Inv at %v: Sin = %d raw units from 0", a, d)
 		}
-		if d := got.Cos.Sub(fixed.One()).Abs().Raw(); d > budget {
+		if d := got.Cos.Sub(fixed.Q32One()).Abs().Raw(); d > budget {
 			t.Errorf("Mul with Inv at %v: Cos = %d raw units from One", a, d)
 		}
 	}
 }
 
 func TestRotNormalize(t *testing.T) {
-	step := fixed.RotFromTurns(fixed.FromRatio(1, 100))
+	step := fixed.RotFromTurns(fixed.Q32FromRatio(1, 100))
 	r := fixed.RotIdentity()
 	for range 100 {
 		r = r.Mul(step)
 	}
 	r = r.Normalize()
 	lenSq := r.Sin.Mul(r.Sin).Add(r.Cos.Mul(r.Cos))
-	if d := lenSq.Sub(fixed.One()).Abs().Raw(); d > 4 {
+	if d := lenSq.Sub(fixed.Q32One()).Abs().Raw(); d > 4 {
 		t.Errorf("length² after Normalize = %d raw units from One", d)
 	}
-	if got := (fixed.Rot{}).Normalize(); !got.Cos.Eq(fixed.One()) || !got.Sin.Eq(fixed.Zero()) {
+	if got := (fixed.Rot{}).Normalize(); !got.Cos.Eq(fixed.Q32One()) || !got.Sin.Eq(fixed.Q32Zero()) {
 		t.Errorf("Normalize of the zero Rot = (%v, %v), want the identity", got.Sin, got.Cos)
 	}
-	if got := (fixed.Rot{Sin: fixed.FromRaw(1)}).Normalize(); !got.Sin.Eq(fixed.One()) || !got.Cos.Eq(fixed.Zero()) {
+	if got := (fixed.Rot{Sin: fixed.Q32FromRaw(1)}).Normalize(); !got.Sin.Eq(fixed.Q32One()) || !got.Cos.Eq(fixed.Q32Zero()) {
 		t.Errorf("Normalize of the smallest nonzero Rot = (%v, %v), want (1, 0)", got.Sin, got.Cos)
 	}
 }

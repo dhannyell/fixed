@@ -2,9 +2,9 @@ package fixed
 
 import "math/bits"
 
-// Vec2 is a 2D vector of Q components.
+// Vec2 is a 2D vector of Q32 components.
 type Vec2 struct {
-	X, Y Q
+	X, Y Q32
 }
 
 // Add returns the sum of two vectors.
@@ -18,34 +18,34 @@ func (v Vec2) Sub(o Vec2) Vec2 {
 }
 
 // Mul returns v scaled by s.
-func (v Vec2) Mul(s Q) Vec2 {
+func (v Vec2) Mul(s Q32) Vec2 {
 	return Vec2{X: v.X.Mul(s), Y: v.Y.Mul(s)}
 }
 
 // Div returns v divided by s. It panics when s is zero.
-func (v Vec2) Div(s Q) Vec2 {
+func (v Vec2) Div(s Q32) Vec2 {
 	return Vec2{X: v.X.Div(s), Y: v.Y.Div(s)}
 }
 
 // Dot returns the dot product of two vectors.
-func (v Vec2) Dot(o Vec2) Q {
+func (v Vec2) Dot(o Vec2) Q32 {
 	return v.X.Mul(o.X).Add(v.Y.Mul(o.Y))
 }
 
 // LenSq returns the squared length of the vector. It uses the scalar
 // multiplication and addition rules, including saturation.
-func (v Vec2) LenSq() Q {
+func (v Vec2) LenSq() Q32 {
 	return v.Dot(v)
 }
 
 // Len returns the length of the vector, floored to the Q32.32 grid.
-func (v Vec2) Len() Q {
+func (v Vec2) Len() Q32 {
 	raw := hypotRaw(v.X.raw, v.Y.raw)
-	if raw > uint64(rawMax) {
+	if raw > uint64(q32RawMax) {
 		saturationEvents.Add(1)
-		return MaxValue()
+		return Q32MaxValue()
 	}
-	return Q{raw: int64(raw)}
+	return Q32{raw: int64(raw)}
 }
 
 // Normalize returns a unit vector with the same direction as v. The
@@ -56,18 +56,18 @@ func (v Vec2) Normalize() Vec2 {
 }
 
 // Distance returns the distance between v and o.
-func (v Vec2) Distance(o Vec2) Q {
+func (v Vec2) Distance(o Vec2) Q32 {
 	return v.Sub(o).Len()
 }
 
 // DistanceSq returns the squared distance between v and o.
-func (v Vec2) DistanceSq(o Vec2) Q {
+func (v Vec2) DistanceSq(o Vec2) Q32 {
 	return v.Sub(o).LenSq()
 }
 
 // Lerp linearly interpolates between v and target by t. t is not
 // clamped.
-func (v Vec2) Lerp(target Vec2, t Q) Vec2 {
+func (v Vec2) Lerp(target Vec2, t Q32) Vec2 {
 	return v.Add(target.Sub(v).Mul(t))
 }
 
@@ -82,14 +82,34 @@ func hypotRaw(x, y int64) uint64 {
 }
 
 // unitPair scales before squaring so the pair cannot underflow to zero.
-func unitPair(x, y int64) (Q, Q) {
+func unitPair(x, y int64) (Q32, Q32) {
 	mx, my := magnitude(x), magnitude(y)
 	scale := max(mx, my)
 	if scale == 0 {
-		return Q{}, Q{}
+		return Q32{}, Q32{}
 	}
-	sx := divMag(mx, scale, x < 0)
-	sy := divMag(my, scale, y < 0)
+	var sx, sy Q32
+	switch {
+	case mx == my:
+		sx = Q32{raw: signedUnit(x < 0)}
+		sy = Q32{raw: signedUnit(y < 0)}
+	case mx > my:
+		sx = Q32{raw: signedUnit(x < 0)}
+		sy = divMag(my, scale, y < 0)
+	default:
+		sx = divMag(mx, scale, x < 0)
+		sy = Q32{raw: signedUnit(y < 0)}
+	}
 	n := sx.Mul(sx).Add(sy.Mul(sy)).Sqrt()
+	if n.raw == q32RawOne {
+		return sx, sy
+	}
 	return sx.Div(n), sy.Div(n)
+}
+
+func signedUnit(neg bool) int64 {
+	if neg {
+		return -q32RawOne
+	}
+	return q32RawOne
 }
