@@ -384,3 +384,24 @@ func BenchmarkCompareRotFromTurns(b *testing.B) {
 		benchSinkFloat64 = acc
 	})
 }
+
+func BenchmarkCompareAtan2Turns(b *testing.B) {
+	q, f := compareQ32Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		var acc int64
+		for i := range b.N {
+			j := i & compareMask
+			acc += fixed.Atan2Turns(q[j], q[(j*31)&compareMask]).Raw()
+		}
+		benchSinkQ32 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		const invTau = 1 / (2 * math.Pi)
+		var acc float64
+		for i := range b.N {
+			j := i & compareMask
+			acc += math.Atan2(f[j], f[(j*31)&compareMask]) * invTau
+		}
+		benchSinkFloat64 = acc
+	})
+}

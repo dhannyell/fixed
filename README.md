@@ -113,6 +113,7 @@ occasional high outliers that the median excludes.
 | `Rot.Normalize` | 26.7 | 18.5 | 54 | 4.79× |
 | `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs | 0.39× |
 | `RotFromTurns` | — | 3.5 | 280 | 0.36× |
+| `Atan2Turns` | — | 3.9 | 250 | 0.46× |
 
 Read each column alone; the columns measure different situations. Latency is
 the cost when each result feeds the next operation, as in an iterative

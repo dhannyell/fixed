@@ -33,6 +33,16 @@ func BenchmarkRotFromTurns(b *testing.B) {
 	benchSinkQ32 = acc
 }
 
+func BenchmarkAtan2Turns(b *testing.B) {
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.Atan2Turns(fixed.Q32FromRaw(u), fixed.Q32FromRaw(u*31)).Raw()
+		u += 2654435761
+	}
+	benchSinkQ32 = acc
+}
+
 // Throughput benchmarks accumulate into a sink, so iterations overlap in
 // the pipeline. Latency benchmarks feed each result into the next call and
 // measure the dependent cost one caller pays. Do not compare the two.
