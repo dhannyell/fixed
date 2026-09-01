@@ -18,6 +18,35 @@ var (
 	mulKernels = []batchKernel{{"scalar", mul16Scalar}}
 )
 
+// batchWrapKernel names one wrapping add. A wrapping kernel records no events.
+type batchWrapKernel struct {
+	name string
+	fn   func(dst, a, b []Q16)
+}
+
+var wrapKernels = []batchWrapKernel{{"scalar", add16WrapScalar}}
+
+// axpyForm names one traversal of the composite kernel. Every form publishes
+// its own saturation events, so a caller compares them through
+// SaturationCount.
+type axpyForm struct {
+	name string
+	run  func(x, m, v []Q16, bias, lo, hi Q16)
+}
+
+// axpyForms lists the traversals this build can reach. The architecture files
+// append their vector kernels.
+var axpyForms = []axpyForm{
+	{"fused", axpyClampFused},
+	{"multipass", func(x, m, v []Q16, bias, lo, hi Q16) {
+		biasVec := make([]Q16, len(x))
+		for i := range biasVec {
+			biasVec[i] = bias
+		}
+		axpyClampMultipass(x, m, v, biasVec, make([]Q16, len(x)), lo, hi)
+	}},
+}
+
 // batchGrid returns raw values that reach both saturation edges.
 func batchGrid() []int32 {
 	return []int32{
@@ -88,18 +117,28 @@ func TestBatchWrapOpsNeverSaturate(t *testing.T) {
 	n := len(a)
 
 	ResetSaturationCount()
-	gotAdd := make([]Q16, n)
-	Add16Wrap(gotAdd, a, b)
 	gotMul := make([]Q16, n)
 	Mul16Wrap(gotMul, a, b)
+	for _, k := range wrapKernels {
+		for _, size := range batchSizes {
+			if size > n {
+				continue
+			}
+			got := make([]Q16, size)
+			k.fn(got, a[:size], b[:size])
+			for i := range got {
+				if want := a[i].raw + b[i].raw; got[i].raw != want {
+					t.Fatalf("%s element %d = %d, want %d",
+						k.name, i, got[i].raw, want)
+				}
+			}
+		}
+	}
 	if c := SaturationCount(); c != 0 {
 		t.Errorf("wrap ops recorded %d saturation events, want 0", c)
 	}
 
 	for i := range a {
-		if want := a[i].raw + b[i].raw; gotAdd[i].raw != want {
-			t.Fatalf("Add16Wrap element %d = %d, want %d", i, gotAdd[i].raw, want)
-		}
 		want := int32((int64(a[i].raw) * int64(b[i].raw)) >> 16)
 		if gotMul[i].raw != want {
 			t.Fatalf("Mul16Wrap element %d = %d, want %d", i, gotMul[i].raw, want)
@@ -163,13 +202,13 @@ func TestBatchLengthMismatchPanics(t *testing.T) {
 const batchStride = uint32(2654435761)
 
 // axpyInputs builds the composite kernel operands with the house stride.
-func axpyInputs(n int) (x, m, v []Q16) {
+// shift narrows the operands: a wide shift keeps the run inside the hot regime,
+// a shift of zero drives every saturation site.
+func axpyInputs(n int, shift uint) (x, m, v []Q16) {
 	u := uint32(1)
 	next := func() Q16 {
 		u = u*batchStride + 1
-		// Keep operands small so the composite stays in the hot regime and
-		// still crosses the edges when the stride lands there.
-		return Q16{raw: int32(u) >> 8}
+		return Q16{raw: int32(u) >> shift}
 	}
 	for range n {
 		x = append(x, next())
@@ -186,48 +225,50 @@ func TestAxpyFormsAgree(t *testing.T) {
 	lo := Q16{raw: -8 * q16RawOne}
 	hi := Q16{raw: 8 * q16RawOne}
 
-	for _, n := range batchSizes {
-		t.Run("n="+strconv.Itoa(n), func(t *testing.T) {
-			x, m, v := axpyInputs(n)
+	// A saturating regime is required: without it the counter comparison is
+	// vacuous, because every form reports zero.
+	regimes := []struct {
+		name  string
+		shift uint
+	}{{"hot", 8}, {"saturating", 0}}
 
-			wantX := append([]Q16(nil), x...)
-			ResetSaturationCount()
-			axpyClampPerCall(wantX, m, v, bias, lo, hi)
-			wantEvents := SaturationCount()
+	for _, r := range regimes {
+		for _, n := range batchSizes {
+			t.Run(r.name+"/n="+strconv.Itoa(n), func(t *testing.T) {
+				runAxpyParity(t, n, r.shift, bias, lo, hi)
+			})
+		}
+	}
+}
 
-			forms := []struct {
-				name string
-				run  func(x []Q16)
-			}{
-				{"fused", func(x []Q16) {
-					axpyClampFused(x, m, v, bias, lo, hi)
-				}},
-				{"multipass", func(x []Q16) {
-					biasVec := make([]Q16, n)
-					for i := range biasVec {
-						biasVec[i] = bias
-					}
-					axpyClampMultipass(x, m, v, biasVec, make([]Q16, n), lo, hi)
-				}},
+func runAxpyParity(t *testing.T, n int, shift uint, bias, lo, hi Q16) {
+	t.Helper()
+	x, m, v := axpyInputs(n, shift)
+
+	wantX := append([]Q16(nil), x...)
+	ResetSaturationCount()
+	axpyClampPerCall(wantX, m, v, bias, lo, hi)
+	wantEvents := SaturationCount()
+
+	for _, f := range axpyForms {
+		gotX := append([]Q16(nil), x...)
+		ResetSaturationCount()
+		f.run(gotX, m, v, bias, lo, hi)
+		gotEvents := SaturationCount()
+
+		for i := range wantX {
+			if gotX[i] != wantX[i] {
+				t.Fatalf("%s element %d = %d, per-call says %d",
+					f.name, i, gotX[i].raw, wantX[i].raw)
 			}
-			for _, f := range forms {
-				gotX := append([]Q16(nil), x...)
-				ResetSaturationCount()
-				f.run(gotX)
-				gotEvents := SaturationCount()
-
-				for i := range wantX {
-					if gotX[i] != wantX[i] {
-						t.Fatalf("%s element %d = %d, per-call says %d",
-							f.name, i, gotX[i].raw, wantX[i].raw)
-					}
-				}
-				if gotEvents != wantEvents {
-					t.Errorf("%s recorded %d events, per-call recorded %d",
-						f.name, gotEvents, wantEvents)
-				}
-			}
-		})
+		}
+		if gotEvents != wantEvents {
+			t.Errorf("%s recorded %d events, per-call recorded %d",
+				f.name, gotEvents, wantEvents)
+		}
+	}
+	if shift == 0 && n >= 8 && wantEvents == 0 {
+		t.Errorf("the saturating regime produced no events at n=%d", n)
 	}
 }
 

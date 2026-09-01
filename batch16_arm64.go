@@ -11,8 +11,11 @@ import (
 // There is no tier to choose.
 
 // selectKernels returns the kernels for this CPU.
+//
+// Mul stays scalar here: NEON widens only the low half of a vector
+// (MulWidenHi has no counterpart), and no arm64 machine measured this probe.
 func selectKernels() batchKernels {
-	return batchKernels{add: add16NEON, mul: mul16Scalar}
+	return batchKernels{add: add16NEON, mul: mul16Scalar, addWrap: add16WrapNEON}
 }
 
 // rawInt32 reinterprets a Q16 slice as int32. Q16 is struct{raw int32}, so the
@@ -44,4 +47,18 @@ func add16NEON(dst, a, b []Q16) uint64 {
 		events += uint64(count.GetElem(uint8(lane)))
 	}
 	return events + add16Scalar(dst[i:], a[i:], b[i:])
+}
+
+// add16WrapNEON is the speed ceiling for the add benchmarks: a pure vector sum
+// with no overflow work at all.
+func add16WrapNEON(dst, a, b []Q16) {
+	const lanes = 4
+	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
+	i := 0
+	for ; i+lanes <= len(ra); i += lanes {
+		x := archsimd.LoadInt32x4(ra[i:])
+		y := archsimd.LoadInt32x4(rb[i:])
+		x.Add(y).Store(rd[i:])
+	}
+	add16WrapScalar(dst[i:], a[i:], b[i:])
 }

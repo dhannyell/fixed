@@ -9,6 +9,9 @@ package fixed
 type batchKernels struct {
 	add func(dst, a, b []Q16) uint64
 	mul func(dst, a, b []Q16) uint64
+	// addWrap records no events, so it returns nothing. It is the speed
+	// ceiling that the saturating add is measured against.
+	addWrap func(dst, a, b []Q16)
 }
 
 // kernels is chosen once, at package initialization. Tests swap it to run the
@@ -43,6 +46,11 @@ func Mul16(dst, a, b []Q16) {
 // Add16Wrap stores a[i]+b[i] into dst with two's-complement wraparound.
 func Add16Wrap(dst, a, b []Q16) {
 	batchLens(dst, a, b)
+	kernels.addWrap(dst, a, b)
+}
+
+// add16WrapScalar is the oracle for every wrapping add kernel.
+func add16WrapScalar(dst, a, b []Q16) {
 	for i := range a {
 		dst[i] = Q16{raw: a[i].raw + b[i].raw}
 	}
