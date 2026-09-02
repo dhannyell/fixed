@@ -17,6 +17,8 @@ func init() {
 	subKernels = append(subKernels, batchKernel{"avx2", sub16AVX2})
 	mulKernels = append(mulKernels, batchKernel{"avx2", mul16AVX2})
 	clampKernels = append(clampKernels, batchClampKernel{"avx2", clamp16AVX2})
+	widenKernels = append(widenKernels, batchWidenKernel{"avx2", q32FromQ16AVX2})
+	narrowKernels = append(narrowKernels, batchNarrowKernel{"avx2", q16FromQ32AVX2})
 }
 
 // TestBatchPathNamesTheActiveKernels ties the introspection to the CPU check
