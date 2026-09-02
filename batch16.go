@@ -93,58 +93,72 @@ func Q16FromQ32(dst []Q16, a []Q32) {
 }
 
 // add16Scalar is the oracle for every add kernel.
+// q16SaturateWide clamps an out-of-range widened value. It is the cold tail of
+// the batch kernels; the hot loop keeps one comparison.
+//
+//go:noinline
+func q16SaturateWide(v int64) int32 {
+	if v > q16RawMax {
+		return q16RawMax
+	}
+	return q16RawMin
+}
+
 func add16Scalar(dst, a, b []Q16) uint64 {
+	// Reslicing to one length lets the compiler drop the bounds checks that
+	// the hot loop would otherwise repeat on every element.
+	dst = dst[:len(a)]
+	b = b[:len(a)]
 	var events uint64
 	for i := range a {
 		v := int64(a[i].raw) + int64(b[i].raw)
-		if v > q16RawMax {
-			v = q16RawMax
-			events++
-		} else if v < q16RawMin {
-			v = q16RawMin
+		r := int32(v)
+		if int64(r) != v {
+			r = q16SaturateWide(v)
 			events++
 		}
-		dst[i] = Q16{raw: int32(v)}
+		dst[i] = Q16{raw: r}
 	}
 	return events
 }
 
 // sub16Scalar is the oracle for every sub kernel.
 func sub16Scalar(dst, a, b []Q16) uint64 {
+	dst = dst[:len(a)]
+	b = b[:len(a)]
 	var events uint64
 	for i := range a {
 		v := int64(a[i].raw) - int64(b[i].raw)
-		if v > q16RawMax {
-			v = q16RawMax
-			events++
-		} else if v < q16RawMin {
-			v = q16RawMin
+		r := int32(v)
+		if int64(r) != v {
+			r = q16SaturateWide(v)
 			events++
 		}
-		dst[i] = Q16{raw: int32(v)}
+		dst[i] = Q16{raw: r}
 	}
 	return events
 }
 
 // mul16Scalar is the oracle for every mul kernel.
 func mul16Scalar(dst, a, b []Q16) uint64 {
+	dst = dst[:len(a)]
+	b = b[:len(a)]
 	var events uint64
 	for i := range a {
 		v := (int64(a[i].raw) * int64(b[i].raw)) >> 16
-		if v > q16RawMax {
-			v = q16RawMax
-			events++
-		} else if v < q16RawMin {
-			v = q16RawMin
+		r := int32(v)
+		if int64(r) != v {
+			r = q16SaturateWide(v)
 			events++
 		}
-		dst[i] = Q16{raw: int32(v)}
+		dst[i] = Q16{raw: r}
 	}
 	return events
 }
 
 // clamp16Scalar is the oracle for every clamp kernel.
 func clamp16Scalar(dst, a []Q16, lo, hi Q16) {
+	dst = dst[:len(a)]
 	for i := range a {
 		v := a[i].raw
 		if v < lo.raw {
@@ -159,7 +173,15 @@ func clamp16Scalar(dst, a []Q16, lo, hi Q16) {
 // q32FromQ16Scalar is the oracle for every widening kernel. The shift is
 // exact, so no element can saturate.
 func q32FromQ16Scalar(dst []Q32, a []Q16) {
-	for i := range a {
+	dst = dst[:len(a)]
+	i := 0
+	// Two elements per step keep the loop counter off the critical path of
+	// the widening store, which is twice as wide as the load.
+	for ; i+2 <= len(a); i += 2 {
+		dst[i] = Q32{raw: int64(a[i].raw) << 16}
+		dst[i+1] = Q32{raw: int64(a[i+1].raw) << 16}
+	}
+	for ; i < len(a); i++ {
 		dst[i] = Q32{raw: int64(a[i].raw) << 16}
 	}
 }
@@ -167,17 +189,16 @@ func q32FromQ16Scalar(dst []Q32, a []Q16) {
 // q16FromQ32Scalar is the oracle for every narrowing kernel. The arithmetic
 // shift floors; the clamp saturates.
 func q16FromQ32Scalar(dst []Q16, a []Q32) uint64 {
+	dst = dst[:len(a)]
 	var events uint64
 	for i := range a {
 		v := a[i].raw >> 16
-		if v > q16RawMax {
-			v = q16RawMax
-			events++
-		} else if v < q16RawMin {
-			v = q16RawMin
+		r := int32(v)
+		if int64(r) != v {
+			r = q16SaturateWide(v)
 			events++
 		}
-		dst[i] = Q16{raw: int32(v)}
+		dst[i] = Q16{raw: r}
 	}
 	return events
 }
