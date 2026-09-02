@@ -1,6 +1,7 @@
 package fixed
 
 import (
+	"os"
 	"strconv"
 	"testing"
 )
@@ -112,7 +113,8 @@ func TestBatchOpsMatchTheScalarPath(t *testing.T) {
 }
 
 // TestBatchAliasingKeepsResults proves a kernel reads each lane before it
-// writes it, so dst may name the same slice as a source.
+// writes it, so dst may name the same slice as either source. Other overlaps
+// are outside the contract and are not tested.
 func TestBatchAliasingKeepsResults(t *testing.T) {
 	a, b := batchPairs()
 	ops := []struct {
@@ -134,7 +136,16 @@ func TestBatchAliasingKeepsResults(t *testing.T) {
 				k.fn(inPlace, inPlace, b)
 				for i := range want {
 					if inPlace[i] != want[i] {
-						t.Fatalf("element %d = %d, want %d",
+						t.Fatalf("dst==a element %d = %d, want %d",
+							i, inPlace[i].raw, want[i].raw)
+					}
+				}
+
+				inPlace = append([]Q16(nil), b...)
+				k.fn(inPlace, a, inPlace)
+				for i := range want {
+					if inPlace[i] != want[i] {
+						t.Fatalf("dst==b element %d = %d, want %d",
 							i, inPlace[i].raw, want[i].raw)
 					}
 				}
@@ -227,6 +238,21 @@ func TestBatchPublicWrappersPublishCounts(t *testing.T) {
 	if got := SaturationCount(); got != want {
 		t.Errorf("BatchMul16 published %d events, want %d", got, want)
 	}
+
+	wide := make([]Q32, 0, len(conversionGrid()))
+	for _, v := range conversionGrid() {
+		wide = append(wide, Q32{raw: v})
+	}
+	narrow := make([]Q16, len(wide))
+	want = q16FromQ32Scalar(narrow, wide)
+	if want == 0 {
+		t.Fatal("the conversion grid must saturate at least once")
+	}
+	ResetSaturationCount()
+	BatchQ16FromQ32(narrow, wide)
+	if got := SaturationCount(); got != want {
+		t.Errorf("BatchQ16FromQ32 published %d events, want %d", got, want)
+	}
 }
 
 func TestBatchLengthMismatchPanics(t *testing.T) {
@@ -254,12 +280,18 @@ func TestBatchLengthMismatchPanics(t *testing.T) {
 }
 
 // TestBatchPathNamesAKnownFamily checks the introspection agrees with the
-// families this package can build.
+// families this package can build. When FIXED_BATCH_PATH is set, the test
+// also demands that exact family: CI uses it so a runner without the vector
+// feature cannot pass the vector job on the scalar kernels.
 func TestBatchPathNamesAKnownFamily(t *testing.T) {
-	switch p := BatchPath(); p {
+	p := BatchPath()
+	switch p {
 	case "scalar", "avx2", "neon":
 	default:
 		t.Errorf("BatchPath() = %q, want scalar, avx2 or neon", p)
+	}
+	if want := os.Getenv("FIXED_BATCH_PATH"); want != "" && p != want {
+		t.Errorf("BatchPath() = %q, FIXED_BATCH_PATH demands %q", p, want)
 	}
 }
 

@@ -3,6 +3,10 @@ package fixed
 // Batch functions apply one Q16 operation across whole slices. The scalar
 // kernels in this file define the result bits and the saturation count. Every
 // vector kernel on every architecture must match them exactly.
+//
+// Aliasing: dst may be the same slice as a source, so an operation can run in
+// place. Any other overlap is undefined, because the scalar and the vector
+// kernels read and write in different block sizes and would disagree.
 
 // batchKernels holds the kernels chosen for this CPU. A kernel that can
 // saturate returns the number of saturated elements; the exported wrapper
@@ -41,7 +45,8 @@ func batchLens2(dst, a int) {
 func BatchPath() string { return kernels.path }
 
 // BatchAdd16 stores a[i]+b[i] into dst. Each element saturates on overflow.
-// All three slices must share one length; dst may alias a or b.
+// All three slices must share one length. dst may be the same slice as a or b;
+// no other overlap is allowed.
 func BatchAdd16(dst, a, b []Q16) {
 	batchLens(dst, a, b)
 	if events := kernels.add(dst, a, b); events != 0 {
@@ -50,7 +55,8 @@ func BatchAdd16(dst, a, b []Q16) {
 }
 
 // BatchSub16 stores a[i]-b[i] into dst. Each element saturates on overflow.
-// All three slices must share one length; dst may alias a or b.
+// All three slices must share one length. dst may be the same slice as a or b;
+// no other overlap is allowed.
 func BatchSub16(dst, a, b []Q16) {
 	batchLens(dst, a, b)
 	if events := kernels.sub(dst, a, b); events != 0 {
@@ -59,8 +65,8 @@ func BatchSub16(dst, a, b []Q16) {
 }
 
 // BatchMul16 stores a[i]*b[i] into dst. It floors each product to Q16.16 and
-// saturates on overflow. All three slices must share one length; dst may
-// alias a or b.
+// saturates on overflow. All three slices must share one length. dst may be
+// the same slice as a or b; no other overlap is allowed.
 func BatchMul16(dst, a, b []Q16) {
 	batchLens(dst, a, b)
 	if events := kernels.mul(dst, a, b); events != 0 {
@@ -70,7 +76,8 @@ func BatchMul16(dst, a, b []Q16) {
 
 // BatchClamp16 stores a[i] limited to [lo, hi] into dst. It requires lo <= hi.
 // A clamp is not an overflow, so it records no saturation event. Both slices
-// must share one length; dst may alias a.
+// must share one length. dst may be the same slice as a; no other overlap is
+// allowed.
 func BatchClamp16(dst, a []Q16, lo, hi Q16) {
 	batchLens2(len(dst), len(a))
 	kernels.clamp(dst, a, lo, hi)

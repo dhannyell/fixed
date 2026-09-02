@@ -1,6 +1,8 @@
 package fixed_test
 
 import (
+	"go/ast"
+	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"math"
@@ -286,14 +288,7 @@ func TestArrowRule(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		gated := false
-		for _, group := range file.Comments {
-			for _, c := range group.List {
-				if strings.HasPrefix(c.Text, "//go:build") && strings.Contains(c.Text, "goexperiment.simd") {
-					gated = true
-				}
-			}
-		}
+		gated := simdGated(t, file)
 		for _, imp := range file.Imports {
 			if allow[imp.Path.Value] || (gated && allowSIMD[imp.Path.Value]) {
 				continue
@@ -301,6 +296,29 @@ func TestArrowRule(t *testing.T) {
 			t.Errorf("%s imports %s: outside the allowlist", name, imp.Path.Value)
 		}
 	}
+}
+
+// simdGated reports whether a file's build constraint excludes it from every
+// build that lacks the simd experiment. It evaluates the constraint with all
+// tags true except goexperiment.simd, so an architecture tag alone cannot
+// open the allowlist.
+func simdGated(t *testing.T, file *ast.File) bool {
+	for _, group := range file.Comments {
+		if group.Pos() > file.Package {
+			break
+		}
+		for _, c := range group.List {
+			if !constraint.IsGoBuild(c.Text) {
+				continue
+			}
+			expr, err := constraint.Parse(c.Text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return !expr.Eval(func(tag string) bool { return tag != "goexperiment.simd" })
+		}
+	}
+	return false
 }
 
 func fuzzSeeds() []int64 {

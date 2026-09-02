@@ -138,8 +138,10 @@ The batch functions are measured separately, because they are compared with a
 loop rather than with a float. The numbers are nanoseconds per element at 1024
 elements, medians of twenty runs over two sessions on the same machine. The
 `per-call loop` column writes `dst[i] = a[i].Op(b[i])` by hand; `scalar` is the
-batch function in a default build; `avx2` is the same call in a build with
-`GOEXPERIMENT=simd` on Go 1.27.
+exported batch function in a default build; `avx2` is the same exported call
+in a build with `GOEXPERIMENT=simd` on Go 1.27. The benchmark goes through the
+exported function, so the length check and the counter update are inside the
+number.
 
 | Operation | per-call loop | scalar | avx2 |
 | --- | --- | --- | --- |
@@ -185,11 +187,12 @@ a valid rotation; start with `RotIdentity` or `RotFromTurns`.
 
 `BatchAdd16`, `BatchSub16`, `BatchMul16`, and `BatchClamp16` apply one
 operation across whole slices of `Q16`. Every slice in a call must share one
-length, and the destination may alias a source. `BatchQ32FromQ16` and
+length. The destination may be the same slice as a source, so an operation can
+run in place; any other overlap is undefined. `BatchQ32FromQ16` and
 `BatchQ16FromQ32` move whole slices across the format boundary and follow the
-conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number of saturated elements to the
-saturation counter in one update, so `SaturationCount` reports the same total
-as a loop over the scalar methods.
+conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number
+of saturated elements to the saturation counter in one update, so
+`SaturationCount` reports the same total as a loop over the scalar methods.
 
 Every build runs the scalar kernels. Building with `GOEXPERIMENT=simd` on Go
 1.27 or later selects vector kernels at package initialization: AVX2 on amd64

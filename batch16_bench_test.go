@@ -35,6 +35,16 @@ func drain(dst []Q16) {
 	}
 }
 
+// withKernels runs fn with the package dispatch table pointed at one kernel
+// per operation, so the exported functions carry the full call cost of that
+// path: the length check, the indirect call and the counter update.
+func withKernels(k batchKernels, fn func()) {
+	saved := kernels
+	kernels = k
+	defer func() { kernels = saved }()
+	fn()
+}
+
 // runBatch names one benchmark case as op/impl/n so benchstat can group it.
 func runBatch(b *testing.B, op, impl string, n int, run func()) {
 	b.Run("op="+op+"/impl="+impl+"/n="+strconv.Itoa(n), func(b *testing.B) {
@@ -58,9 +68,13 @@ func BenchmarkBatch(b *testing.B) {
 			drain(dst)
 		})
 		for _, k := range addKernels {
-			runBatch(b, "add", k.name, n, func() {
-				k.fn(dst, a, y)
-				drain(dst)
+			table := kernels
+			table.add = k.fn
+			withKernels(table, func() {
+				runBatch(b, "add", k.name, n, func() {
+					BatchAdd16(dst, a, y)
+					drain(dst)
+				})
 			})
 		}
 		runBatch(b, "sub", "percall", n, func() {
@@ -70,9 +84,13 @@ func BenchmarkBatch(b *testing.B) {
 			drain(dst)
 		})
 		for _, k := range subKernels {
-			runBatch(b, "sub", k.name, n, func() {
-				k.fn(dst, a, y)
-				drain(dst)
+			table := kernels
+			table.sub = k.fn
+			withKernels(table, func() {
+				runBatch(b, "sub", k.name, n, func() {
+					BatchSub16(dst, a, y)
+					drain(dst)
+				})
 			})
 		}
 
@@ -83,9 +101,13 @@ func BenchmarkBatch(b *testing.B) {
 			drain(dst)
 		})
 		for _, k := range mulKernels {
-			runBatch(b, "mul", k.name, n, func() {
-				k.fn(dst, a, y)
-				drain(dst)
+			table := kernels
+			table.mul = k.fn
+			withKernels(table, func() {
+				runBatch(b, "mul", k.name, n, func() {
+					BatchMul16(dst, a, y)
+					drain(dst)
+				})
 			})
 		}
 
@@ -97,9 +119,13 @@ func BenchmarkBatch(b *testing.B) {
 			drain(dst)
 		})
 		for _, k := range clampKernels {
-			runBatch(b, "clamp", k.name, n, func() {
-				k.fn(dst, a, lo, hi)
-				drain(dst)
+			table := kernels
+			table.clamp = k.fn
+			withKernels(table, func() {
+				runBatch(b, "clamp", k.name, n, func() {
+					BatchClamp16(dst, a, lo, hi)
+					drain(dst)
+				})
 			})
 		}
 
@@ -126,12 +152,16 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 		}
 	})
 	for _, k := range widenKernels {
-		b.Run("op=q32fromq16/impl="+k.name+"/n="+strconv.Itoa(n), func(b *testing.B) {
-			b.SetBytes(int64(n) * 12)
-			for range b.N {
-				k.fn(wideDst, a)
-				benchSinkBatch += wideDst[n-1].raw
-			}
+		table := kernels
+		table.q32FromQ16 = k.fn
+		withKernels(table, func() {
+			b.Run("op=q32fromq16/impl="+k.name+"/n="+strconv.Itoa(n), func(b *testing.B) {
+				b.SetBytes(int64(n) * 12)
+				for range b.N {
+					BatchQ32FromQ16(wideDst, a)
+					benchSinkBatch += wideDst[n-1].raw
+				}
+			})
 		})
 	}
 
@@ -145,12 +175,16 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 		}
 	})
 	for _, k := range narrowKernels {
-		b.Run("op=q16fromq32/impl="+k.name+"/n="+strconv.Itoa(n), func(b *testing.B) {
-			b.SetBytes(int64(n) * 12)
-			for range b.N {
-				k.fn(dst, wide)
-				drain(dst)
-			}
+		table := kernels
+		table.q16FromQ32 = k.fn
+		withKernels(table, func() {
+			b.Run("op=q16fromq32/impl="+k.name+"/n="+strconv.Itoa(n), func(b *testing.B) {
+				b.SetBytes(int64(n) * 12)
+				for range b.N {
+					BatchQ16FromQ32(dst, wide)
+					drain(dst)
+				}
+			})
 		})
 	}
 }

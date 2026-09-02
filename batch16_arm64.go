@@ -22,6 +22,11 @@ func selectKernels() batchKernels {
 	}
 }
 
+// neonFlushBlocks bounds how many blocks a lane counter absorbs before the
+// kernel folds it into the uint64 total. A lane gains at most one per block,
+// so the int32 lane stays far from overflow.
+const neonFlushBlocks = 1 << 30
+
 // vecLaneSum adds the four lanes of a counter vector. The counter holds one
 // non-negative count per lane, so the sum cannot overflow.
 func vecLaneSum(count archsimd.Int32x4) uint64 {
@@ -39,6 +44,8 @@ func add16NEON(dst, a, b []Q16) uint64 {
 	const lanes = 4
 	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
 	count := archsimd.BroadcastInt32x4(0)
+	var events uint64
+	blocks := 0
 
 	i := 0
 	for ; i+lanes <= len(ra); i += lanes {
@@ -48,8 +55,13 @@ func add16NEON(dst, a, b []Q16) uint64 {
 		s.Store(rd[i:])
 		// A lane saturated exactly when the wrapping sum differs from it.
 		count = count.Sub(x.Add(y).NotEqual(s).ToInt32x4())
+		if blocks++; blocks == neonFlushBlocks {
+			events += vecLaneSum(count)
+			count = archsimd.BroadcastInt32x4(0)
+			blocks = 0
+		}
 	}
-	return vecLaneSum(count) + add16Scalar(dst[i:], a[i:], b[i:])
+	return events + vecLaneSum(count) + add16Scalar(dst[i:], a[i:], b[i:])
 }
 
 // sub16NEON subtracts four lanes per step with the saturating NEON difference.
@@ -57,6 +69,8 @@ func sub16NEON(dst, a, b []Q16) uint64 {
 	const lanes = 4
 	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
 	count := archsimd.BroadcastInt32x4(0)
+	var events uint64
+	blocks := 0
 
 	i := 0
 	for ; i+lanes <= len(ra); i += lanes {
@@ -65,8 +79,13 @@ func sub16NEON(dst, a, b []Q16) uint64 {
 		s := x.SubSaturated(y)
 		s.Store(rd[i:])
 		count = count.Sub(x.Sub(y).NotEqual(s).ToInt32x4())
+		if blocks++; blocks == neonFlushBlocks {
+			events += vecLaneSum(count)
+			count = archsimd.BroadcastInt32x4(0)
+			blocks = 0
+		}
 	}
-	return vecLaneSum(count) + sub16Scalar(dst[i:], a[i:], b[i:])
+	return events + vecLaneSum(count) + sub16Scalar(dst[i:], a[i:], b[i:])
 }
 
 // clamp16NEON needs no overflow work: a clamp cannot leave the int32 range.
@@ -114,6 +133,8 @@ func mul16NEON(dst, a, b []Q16) uint64 {
 	const lanes = 4
 	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
 	count := archsimd.BroadcastInt32x4(0)
+	var events uint64
+	blocks := 0
 
 	i := 0
 	for ; i+lanes <= len(ra); i += lanes {
@@ -125,8 +146,13 @@ func mul16NEON(dst, a, b []Q16) uint64 {
 		r, o := vecNarrowPairNEON(lo, hi)
 		r.Store(rd[i:])
 		count = count.Sub(o)
+		if blocks++; blocks == neonFlushBlocks {
+			events += vecLaneSum(count)
+			count = archsimd.BroadcastInt32x4(0)
+			blocks = 0
+		}
 	}
-	return vecLaneSum(count) + mul16Scalar(dst[i:], a[i:], b[i:])
+	return events + vecLaneSum(count) + mul16Scalar(dst[i:], a[i:], b[i:])
 }
 
 // q32FromQ16NEON widens four elements per step. The sign extension and the
@@ -149,6 +175,8 @@ func q16FromQ32NEON(dst []Q16, a []Q32) uint64 {
 	const lanes = 4
 	rd, ra := rawInt32(dst), rawInt64(a)
 	count := archsimd.BroadcastInt32x4(0)
+	var events uint64
+	blocks := 0
 
 	i := 0
 	for ; i+lanes <= len(ra); i += lanes {
@@ -158,6 +186,11 @@ func q16FromQ32NEON(dst []Q16, a []Q32) uint64 {
 		r, o := vecNarrowPairNEON(lo, hi)
 		r.Store(rd[i:])
 		count = count.Sub(o)
+		if blocks++; blocks == neonFlushBlocks {
+			events += vecLaneSum(count)
+			count = archsimd.BroadcastInt32x4(0)
+			blocks = 0
+		}
 	}
-	return vecLaneSum(count) + q16FromQ32Scalar(dst[i:], a[i:])
+	return events + vecLaneSum(count) + q16FromQ32Scalar(dst[i:], a[i:])
 }

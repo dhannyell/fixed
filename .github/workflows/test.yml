@@ -59,11 +59,16 @@ jobs:
         include:
           - goarch: amd64
             runner: ubuntu-latest
+            path: avx2
           - goarch: arm64
             runner: ubuntu-24.04-arm
+            path: neon
     runs-on: ${{ matrix.runner }}
     env:
       GOEXPERIMENT: simd
+      # The path test fails unless the vector kernels are the ones selected,
+      # so a runner without the feature cannot pass this job on scalar code.
+      FIXED_BATCH_PATH: ${{ matrix.path }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -78,4 +83,7 @@ jobs:
       - name: Test
         run: go test -count=1 ./...
       - name: Fuzz smoke
-        run: go test -run '^$' -fuzz '^FuzzBatchMul16VsScalar$' -fuzztime 20s .
+        run: |
+          for target in FuzzBatchAdd16VsScalar FuzzBatchMul16VsScalar FuzzBatchQ16FromQ32VsScalar; do
+            go test -run '^$' -fuzz "^${target}\$" -fuzztime 20s . || exit 1
+          done
