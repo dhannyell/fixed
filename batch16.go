@@ -1,8 +1,8 @@
 package fixed
 
-// Batch functions apply one Q16 operation across whole slices. The scalar
-// kernels in this file define the result bits and the saturation count. Every
-// vector kernel on every architecture must match them exactly.
+// Batch functions apply one Q16 operation across whole slices. Scalar kernels
+// specify the result bits and saturation count. Architecture-specific kernels
+// must match them exactly.
 //
 // Aliasing: dst may be the same slice as a source, so an operation can run in
 // place. Any other overlap is undefined, because the scalar and the vector
@@ -12,7 +12,6 @@ package fixed
 // saturate returns the number of saturated elements; the exported wrapper
 // publishes the count.
 type batchKernels struct {
-	// path names the kernel family for BatchPath.
 	path       string
 	add        func(dst, a, b []Q16) uint64
 	sub        func(dst, a, b []Q16) uint64
@@ -22,18 +21,15 @@ type batchKernels struct {
 	q16FromQ32 func(dst []Q16, a []Q32) uint64
 }
 
-// kernels is chosen once, at package initialization. Tests swap it to run the
-// parity grid over every path on one machine.
+// kernels holds the dispatch table selected at package initialization.
 var kernels = selectKernels()
 
-// batchLens panics unless the three slices share one length.
 func batchLens(dst, a, b []Q16) {
 	if len(a) != len(b) || len(dst) != len(a) {
 		panic("fixed: mismatched slice lengths")
 	}
 }
 
-// batchLens2 panics unless the two slices share one length.
 func batchLens2(dst, a int) {
 	if dst != a {
 		panic("fixed: mismatched slice lengths")
@@ -99,7 +95,6 @@ func BatchQ16FromQ32(dst []Q16, a []Q32) {
 	}
 }
 
-// add16Scalar is the oracle for every add kernel.
 // q16SaturateWide clamps an out-of-range widened value. It is the cold tail of
 // the batch kernels; the hot loop keeps one comparison.
 //
@@ -129,7 +124,6 @@ func add16Scalar(dst, a, b []Q16) uint64 {
 	return events
 }
 
-// sub16Scalar is the oracle for every sub kernel.
 func sub16Scalar(dst, a, b []Q16) uint64 {
 	dst = dst[:len(a)]
 	b = b[:len(a)]
@@ -146,7 +140,6 @@ func sub16Scalar(dst, a, b []Q16) uint64 {
 	return events
 }
 
-// mul16Scalar is the oracle for every mul kernel.
 func mul16Scalar(dst, a, b []Q16) uint64 {
 	dst = dst[:len(a)]
 	b = b[:len(a)]
@@ -163,7 +156,6 @@ func mul16Scalar(dst, a, b []Q16) uint64 {
 	return events
 }
 
-// clamp16Scalar is the oracle for every clamp kernel.
 func clamp16Scalar(dst, a []Q16, lo, hi Q16) {
 	dst = dst[:len(a)]
 	for i := range a {
@@ -177,8 +169,6 @@ func clamp16Scalar(dst, a []Q16, lo, hi Q16) {
 	}
 }
 
-// q32FromQ16Scalar is the oracle for every widening kernel. The shift is
-// exact, so no element can saturate.
 func q32FromQ16Scalar(dst []Q32, a []Q16) {
 	dst = dst[:len(a)]
 	i := 0
@@ -193,8 +183,6 @@ func q32FromQ16Scalar(dst []Q32, a []Q16) {
 	}
 }
 
-// q16FromQ32Scalar is the oracle for every narrowing kernel. The arithmetic
-// shift floors; the clamp saturates.
 func q16FromQ32Scalar(dst []Q16, a []Q32) uint64 {
 	dst = dst[:len(a)]
 	var events uint64

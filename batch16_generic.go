@@ -2,9 +2,8 @@
 
 package fixed
 
-// selectKernels returns the scalar kernels. This build has no vector path,
-// either because the simd experiment is off or because the architecture
-// offers no vectors. The scalar kernels own the result bits everywhere.
+// selectKernels uses scalar kernels when SIMD is disabled or unsupported on
+// the target architecture.
 func selectKernels() batchKernels {
 	return batchKernels{
 		path:       "scalar",

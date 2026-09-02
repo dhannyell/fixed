@@ -94,26 +94,26 @@ design choices on one machine: AMD Ryzen 7 5800X3D (amd64), Go 1.26.4. They
 are medians of ten runs with `-benchtime=500ms`; Windows scheduling produced
 occasional high outliers that the median excludes.
 
-| Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) | Fixed / float throughput |
+| Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) | Fixed time vs float |
 | --- | --- | --- | --- | --- |
-| `Q16.Add` | 0.5 | 0.5 | 2,000 | 0.83× |
-| `Q16.Mul` | 1.7 | 0.8 | 1,200 | 1.30× |
-| `Q16.Div` | 3.3 | 1.1 | 910 | 1.35× |
-| `Q16.Sqrt` | 10.3 | 3.2 | 310 | 3.05× |
-| `Q32.Add` | 0.4 | 0.5 | 1,900 | 0.73× |
-| `Q32.Mul` | 2.8 | 1.4 | 690 | 2.14× |
-| `Q32.Div` | 4.7 | 3.1 | 330 | 2.38× |
-| `Q32.Sqrt` | 13.6 | 6.1 | 160 | 2.65× |
-| `Vec2.Dot` | 3.3 | 3.4 | 290 | 5.35× |
-| `Vec2.Len` | 16.0 | 13.1 | 76 | 3.47× |
-| `Vec2.Normalize` | 26.4 | 18.3 | 55 | 4.82× |
-| `Vec2.Normalize` axial | 12.5 | 11.4 | 87 | 3.80× |
-| `Rot.Apply` | 5.5 | 5.9 | 170 | 7.88× |
-| `Rot.Mul` | 5.6 | 6.1 | 160 | 8.18× |
-| `Rot.Normalize` | 26.7 | 18.5 | 54 | 4.79× |
-| `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs | 0.39× |
-| `RotFromTurns` | — | 3.5 | 280 | 0.36× |
-| `Atan2Turns` | — | 3.9 | 250 | 0.46× |
+| `Q16.Add` | 0.5 | 0.5 | 2,000 | −17% (faster) |
+| `Q16.Mul` | 1.7 | 0.8 | 1,200 | +30% (slower) |
+| `Q16.Div` | 3.3 | 1.1 | 910 | +35% (slower) |
+| `Q16.Sqrt` | 10.3 | 3.2 | 310 | +205% (slower) |
+| `Q32.Add` | 0.4 | 0.5 | 1,900 | −27% (faster) |
+| `Q32.Mul` | 2.8 | 1.4 | 690 | +114% (slower) |
+| `Q32.Div` | 4.7 | 3.1 | 330 | +138% (slower) |
+| `Q32.Sqrt` | 13.6 | 6.1 | 160 | +165% (slower) |
+| `Vec2.Dot` | 3.3 | 3.4 | 290 | +435% (slower) |
+| `Vec2.Len` | 16.0 | 13.1 | 76 | +247% (slower) |
+| `Vec2.Normalize` | 26.4 | 18.3 | 55 | +382% (slower) |
+| `Vec2.Normalize` axial | 12.5 | 11.4 | 87 | +280% (slower) |
+| `Rot.Apply` | 5.5 | 5.9 | 170 | +688% (slower) |
+| `Rot.Mul` | 5.6 | 6.1 | 160 | +718% (slower) |
+| `Rot.Normalize` | 26.7 | 18.5 | 54 | +379% (slower) |
+| `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs | −61% (faster) |
+| `RotFromTurns` | — | 3.5 | 280 | −64% (faster) |
+| `Atan2Turns` | — | 3.9 | 250 | −54% (faster) |
 
 Read each column alone; the columns measure different situations. Latency is
 the cost when each result feeds the next operation, as in an iterative
@@ -123,10 +123,11 @@ the throughput column, rounded to two digits; use it to size a frame budget.
 Each latency chain also contains one cheap companion operation that keeps the
 value in domain; `bench_test.go` shows the exact chains.
 
-The comparison column comes from paired benchmarks over the same prebuilt
-inputs: Q16 is compared with `float32`, while Q32, vectors, and rotations are
-compared with `float64`. A value below 1× means fixed was faster; a value above
-1× is the fixed-point penalty. These safe-domain float kernels do not reproduce
+The comparison column reports the raw change in throughput time:
+`(fixed time / float time - 1) × 100`. A negative value means fixed was faster;
+a positive value means it was slower. The paired benchmarks use the same
+prebuilt inputs. Q16 is compared with `float32`; Q32, vectors, and rotations
+are compared with `float64`. These safe-domain float kernels do not reproduce
 the package's saturation, rounding, or cross-architecture bit contract. Run
 them with:
 
@@ -152,11 +153,11 @@ number.
 | `BatchQ32FromQ16` | 0.50 | 0.38 | 0.27 |
 | `BatchQ16FromQ32` | 0.75 | 0.42 | 0.38 |
 
-The scalar column never costs more than the hand-written loop, so a program
-that never enables the experiment loses nothing by calling the batch function.
-arm64 has a NEON path for all six. Its numbers are not published here because
-only shared CI runners have measured it, and a shared runner cannot support the
-comparison above.
+In these measurements, every scalar batch function was faster than its
+hand-written loop. The default build therefore had no batch abstraction penalty
+for this workload. arm64 has a NEON path for all six. Its numbers are not
+published here because only shared CI runners have measured it, and a shared
+runner cannot support the comparison above.
 
 Two portability notes. `Div` costs more on arm64, because the 128-bit
 division is a software routine there. `Sqrt` does not divide on any
@@ -203,8 +204,8 @@ when the CPU reports it, and NEON on arm64. `BatchPath` returns `"scalar"`,
 GOEXPERIMENT=simd go build ./...
 ```
 
-The scalar kernels define the bits; the vector kernels prove parity against
-them in CI on amd64 and arm64.
+CI compares the result bits and saturation counts of the AVX2 and NEON kernels
+with the scalar kernels.
 
 ## Architecture
 

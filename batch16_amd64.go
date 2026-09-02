@@ -11,7 +11,6 @@ import (
 // GOAMD64 level. The runtime check below is the only thing that keeps this
 // build off a CPU that lacks the instructions.
 
-// selectKernels returns the kernels for this CPU.
 func selectKernels() batchKernels {
 	k := batchKernels{
 		path:       "scalar",
@@ -22,8 +21,8 @@ func selectKernels() batchKernels {
 		q32FromQ16: q32FromQ16Scalar,
 		q16FromQ32: q16FromQ32Scalar,
 	}
-	// Tiers widen downward. An AVX-512 branch belongs above this one, guarded
-	// by archsimd.X86.AVX512(), once a machine can measure it.
+	// Add future AVX-512 tiers before this branch and guard them with
+	// archsimd.X86.AVX512().
 	if archsimd.X86.AVX2() {
 		k.path = "avx2"
 		k.add = add16AVX2
@@ -114,8 +113,8 @@ func mul16AVX2(dst, a, b []Q16) uint64 {
 	for ; i+lanes <= len(ra); i += lanes {
 		x := archsimd.LoadInt32x8(ra[i:])
 		y := archsimd.LoadInt32x8(rb[i:])
-		// MulWidenEven reads lanes 0, 2, 4 and 6, so the odd lanes move down
-		// by 32 bits to take their turn.
+		// MulWidenEven reads lanes 0, 2, 4 and 6. Move each odd lane into an
+		// even position for the second multiply.
 		xOdd := x.AsUint64x4().ShiftAllRight(32).AsInt32x8()
 		yOdd := y.AsUint64x4().ShiftAllRight(32).AsInt32x8()
 		te := x.MulWidenEven(y).AsUint64x4().ShiftAllRight(16)
