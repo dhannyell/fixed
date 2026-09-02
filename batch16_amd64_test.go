@@ -2,7 +2,10 @@
 
 package fixed
 
-import "simd/archsimd"
+import (
+	"simd/archsimd"
+	"testing"
+)
 
 // init registers the vector kernels this CPU can run, so the parity grid
 // compares every reachable path against the scalar oracle on one machine.
@@ -11,5 +14,19 @@ func init() {
 		return
 	}
 	addKernels = append(addKernels, batchKernel{"avx2", add16AVX2})
+	subKernels = append(subKernels, batchKernel{"avx2", sub16AVX2})
 	mulKernels = append(mulKernels, batchKernel{"avx2", mul16AVX2})
+	clampKernels = append(clampKernels, batchClampKernel{"avx2", clamp16AVX2})
+}
+
+// TestBatchPathNamesTheActiveKernels ties the introspection to the CPU check
+// that selects the kernels.
+func TestBatchPathNamesTheActiveKernels(t *testing.T) {
+	want := "scalar"
+	if archsimd.X86.AVX2() {
+		want = "avx2"
+	}
+	if got := BatchPath(); got != want {
+		t.Errorf("BatchPath() = %q, want %q", got, want)
+	}
 }

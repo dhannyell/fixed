@@ -14,12 +14,23 @@ import (
 
 // selectKernels returns the kernels for this CPU.
 func selectKernels() batchKernels {
-	k := batchKernels{add: add16Scalar, mul: mul16Scalar}
+	k := batchKernels{
+		path:       "scalar",
+		add:        add16Scalar,
+		sub:        sub16Scalar,
+		mul:        mul16Scalar,
+		clamp:      clamp16Scalar,
+		q32FromQ16: q32FromQ16Scalar,
+		q16FromQ32: q16FromQ32Scalar,
+	}
 	// Tiers widen downward. An AVX-512 branch belongs above this one, guarded
 	// by archsimd.X86.AVX512(), once a machine can measure it.
 	if archsimd.X86.AVX2() {
+		k.path = "avx2"
 		k.add = add16AVX2
+		k.sub = sub16AVX2
 		k.mul = mul16AVX2
+		k.clamp = clamp16AVX2
 	}
 	return k
 }
@@ -38,6 +49,16 @@ func vecAddSat(x, y archsimd.Int32x8) (archsimd.Int32x8, uint64) {
 	ovf := x.Xor(r).And(y.Xor(r)).Less(archsimd.BroadcastInt32x8(0))
 	// Shifting by 31 gives 0 for x>=0 and -1 for x<0, so the xor picks
 	// q16RawMax on the high side and q16RawMin on the low side.
+	sat := x.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
+	return sat.IfElse(ovf, r), uint64(bits.OnesCount8(ovf.ToBits()))
+}
+
+// vecSubSat subtracts two vectors with Q16 saturation and returns the
+// saturated lane count. A difference overflows when the operands disagree in
+// sign and the result takes the sign of y. It requires AVX2.
+func vecSubSat(x, y archsimd.Int32x8) (archsimd.Int32x8, uint64) {
+	r := x.Sub(y)
+	ovf := x.Xor(y).And(x.Xor(r)).Less(archsimd.BroadcastInt32x8(0))
 	sat := x.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
 	return sat.IfElse(ovf, r), uint64(bits.OnesCount8(ovf.ToBits()))
 }
@@ -88,6 +109,19 @@ func add16AVX2(dst, a, b []Q16) uint64 {
 	return events + add16Scalar(dst[i:], a[i:], b[i:])
 }
 
+func sub16AVX2(dst, a, b []Q16) uint64 {
+	const lanes = 8
+	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
+	var events uint64
+	i := 0
+	for ; i+lanes <= len(ra); i += lanes {
+		r, e := vecSubSat(archsimd.LoadInt32x8(ra[i:]), archsimd.LoadInt32x8(rb[i:]))
+		r.Store(rd[i:])
+		events += e
+	}
+	return events + sub16Scalar(dst[i:], a[i:], b[i:])
+}
+
 func mul16AVX2(dst, a, b []Q16) uint64 {
 	const lanes = 8
 	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
@@ -99,4 +133,17 @@ func mul16AVX2(dst, a, b []Q16) uint64 {
 		events += e
 	}
 	return events + mul16Scalar(dst[i:], a[i:], b[i:])
+}
+
+// clamp16AVX2 needs no overflow work: a clamp cannot leave the int32 range.
+func clamp16AVX2(dst, a []Q16, lo, hi Q16) {
+	const lanes = 8
+	rd, ra := rawInt32(dst), rawInt32(a)
+	loV := archsimd.BroadcastInt32x8(lo.raw)
+	hiV := archsimd.BroadcastInt32x8(hi.raw)
+	i := 0
+	for ; i+lanes <= len(ra); i += lanes {
+		archsimd.LoadInt32x8(ra[i:]).Max(loV).Min(hiV).Store(rd[i:])
+	}
+	clamp16Scalar(dst[i:], a[i:], lo, hi)
 }

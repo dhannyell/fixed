@@ -63,6 +63,19 @@ func BenchmarkBatch(b *testing.B) {
 				drain(dst)
 			})
 		}
+		runBatch(b, "sub", "percall", n, func() {
+			for i := range a {
+				dst[i] = a[i].Sub(y[i])
+			}
+			drain(dst)
+		})
+		for _, k := range subKernels {
+			runBatch(b, "sub", k.name, n, func() {
+				k.fn(dst, a, y)
+				drain(dst)
+			})
+		}
+
 		runBatch(b, "mul", "percall", n, func() {
 			for i := range a {
 				dst[i] = a[i].Mul(y[i])
@@ -75,5 +88,69 @@ func BenchmarkBatch(b *testing.B) {
 				drain(dst)
 			})
 		}
+
+		lo, hi := Q16{raw: -q16RawOne}, Q16{raw: q16RawOne}
+		runBatch(b, "clamp", "percall", n, func() {
+			for i := range a {
+				dst[i] = a[i].Clamp(lo, hi)
+			}
+			drain(dst)
+		})
+		for _, k := range clampKernels {
+			runBatch(b, "clamp", k.name, n, func() {
+				k.fn(dst, a, lo, hi)
+				drain(dst)
+			})
+		}
+
+		benchmarkConversions(b, n, a, dst)
+	}
+}
+
+// benchmarkConversions measures the format boundary. Each element moves 8
+// bytes on one side and 4 on the other, so a case touches 12 bytes.
+func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
+	wide := make([]Q32, n)
+	for i := range wide {
+		wide[i] = a[i].ToQ32()
+	}
+	wideDst := make([]Q32, n)
+
+	b.Run("op=q32fromq16/impl=percall/n="+strconv.Itoa(n), func(b *testing.B) {
+		b.SetBytes(int64(n) * 12)
+		for range b.N {
+			for i := range a {
+				wideDst[i] = a[i].ToQ32()
+			}
+			benchSinkBatch += wideDst[n-1].raw
+		}
+	})
+	for _, k := range widenKernels {
+		b.Run("op=q32fromq16/impl="+k.name+"/n="+strconv.Itoa(n), func(b *testing.B) {
+			b.SetBytes(int64(n) * 12)
+			for range b.N {
+				k.fn(wideDst, a)
+				benchSinkBatch += wideDst[n-1].raw
+			}
+		})
+	}
+
+	b.Run("op=q16fromq32/impl=percall/n="+strconv.Itoa(n), func(b *testing.B) {
+		b.SetBytes(int64(n) * 12)
+		for range b.N {
+			for i := range wide {
+				dst[i] = wide[i].ToQ16()
+			}
+			drain(dst)
+		}
+	})
+	for _, k := range narrowKernels {
+		b.Run("op=q16fromq32/impl="+k.name+"/n="+strconv.Itoa(n), func(b *testing.B) {
+			b.SetBytes(int64(n) * 12)
+			for range b.N {
+				k.fn(dst, wide)
+				drain(dst)
+			}
+		})
 	}
 }
