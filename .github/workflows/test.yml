@@ -50,3 +50,32 @@ jobs:
         run: echo "$(go env GOROOT)/lib/wasm" >> "$GITHUB_PATH"
       - name: Test
         run: go test ./...
+
+  simd:
+    name: simd (${{ matrix.goarch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      GOEXPERIMENT: simd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # The archsimd API changes between Go releases. Pin the version the
+          # vector kernels were written against.
+          go-version: "1.27.0"
+      - name: Path
+        run: go test -count=1 -run 'BatchPath' -v ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -count=1 ./...
+      - name: Fuzz smoke
+        run: go test -run '^$' -fuzz '^FuzzBatchMul16VsScalar$' -fuzztime 20s .
