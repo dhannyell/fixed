@@ -1,6 +1,8 @@
 package fixed_test
 
 import (
+	"go/ast"
+	"go/build/constraint"
 	"go/parser"
 	"go/token"
 	"math"
@@ -269,6 +271,9 @@ func TestArrowRule(t *testing.T) {
 	// "math" is allowed for hardware seeds only; exact integer checks
 	// must close every result, so floats never decide a bit.
 	allow := map[string]bool{`"math"`: true, `"math/bits"`: true, `"sync/atomic"`: true}
+	// Files gated behind goexperiment.simd sit outside the portable contract:
+	// no default build reaches them. They may also touch the vector packages.
+	allowSIMD := map[string]bool{`"simd/archsimd"`: true, `"unsafe"`: true}
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -278,16 +283,42 @@ func TestArrowRule(t *testing.T) {
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		file, err := parser.ParseFile(token.NewFileSet(), name, nil, parser.ImportsOnly)
+		mode := parser.ImportsOnly | parser.ParseComments
+		file, err := parser.ParseFile(token.NewFileSet(), name, nil, mode)
 		if err != nil {
 			t.Fatal(err)
 		}
+		gated := simdGated(t, file)
 		for _, imp := range file.Imports {
-			if !allow[imp.Path.Value] {
-				t.Errorf("%s imports %s: outside the allowlist", name, imp.Path.Value)
+			if allow[imp.Path.Value] || (gated && allowSIMD[imp.Path.Value]) {
+				continue
 			}
+			t.Errorf("%s imports %s: outside the allowlist", name, imp.Path.Value)
 		}
 	}
+}
+
+// simdGated reports whether a file's build constraint excludes it from every
+// build that lacks the simd experiment. It evaluates the constraint with all
+// tags true except goexperiment.simd, so an architecture tag alone cannot
+// open the allowlist.
+func simdGated(t *testing.T, file *ast.File) bool {
+	for _, group := range file.Comments {
+		if group.Pos() > file.Package {
+			break
+		}
+		for _, c := range group.List {
+			if !constraint.IsGoBuild(c.Text) {
+				continue
+			}
+			expr, err := constraint.Parse(c.Text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return !expr.Eval(func(tag string) bool { return tag != "goexperiment.simd" })
+		}
+	}
+	return false
 }
 
 func fuzzSeeds() []int64 {

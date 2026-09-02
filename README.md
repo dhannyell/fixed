@@ -134,6 +134,30 @@ them with:
 go test -run '^$' -bench '^BenchmarkCompare' -benchtime=500ms -count=10
 ```
 
+The batch functions are measured separately, because they are compared with a
+loop rather than with a float. The numbers are nanoseconds per element at 1024
+elements, medians of twenty runs over two sessions on the same machine. The
+`per-call loop` column writes `dst[i] = a[i].Op(b[i])` by hand; `scalar` is the
+exported batch function in a default build; `avx2` is the same exported call
+in a build with `GOEXPERIMENT=simd` on Go 1.27. The benchmark goes through the
+exported function, so the length check and the counter update are inside the
+number.
+
+| Operation | per-call loop | scalar | avx2 |
+| --- | --- | --- | --- |
+| `BatchAdd16` | 0.98 | 0.71 | 0.35 |
+| `BatchSub16` | 0.97 | 0.72 | 0.35 |
+| `BatchMul16` | 0.96 | 0.85 | 0.44 |
+| `BatchClamp16` | 1.30 | 1.06 | 0.16 |
+| `BatchQ32FromQ16` | 0.50 | 0.38 | 0.27 |
+| `BatchQ16FromQ32` | 0.75 | 0.42 | 0.38 |
+
+The scalar column never costs more than the hand-written loop, so a program
+that never enables the experiment loses nothing by calling the batch function.
+arm64 has a NEON path for all six. Its numbers are not published here because
+only shared CI runners have measured it, and a shared runner cannot support the
+comparison above.
+
 Two portability notes. `Div` costs more on arm64, because the 128-bit
 division is a software routine there. `Sqrt` does not divide on any
 architecture: its hardware seed plus integer corrections stay within
@@ -159,10 +183,37 @@ its sine and cosine, which makes application, composition, and inversion
 available without another trigonometric lookup. The zero value of `Rot` is not
 a valid rotation; start with `RotIdentity` or `RotFromTurns`.
 
+## Batch operations
+
+`BatchAdd16`, `BatchSub16`, `BatchMul16`, and `BatchClamp16` apply one
+operation across whole slices of `Q16`. Every slice in a call must share one
+length. The destination may be the same slice as a source, so an operation can
+run in place; any other overlap is undefined. `BatchQ32FromQ16` and
+`BatchQ16FromQ32` move whole slices across the format boundary and follow the
+conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number
+of saturated elements to the saturation counter in one update, so
+`SaturationCount` reports the same total as a loop over the scalar methods.
+
+Every build runs the scalar kernels. Building with `GOEXPERIMENT=simd` on Go
+1.27 or later selects vector kernels at package initialization: AVX2 on amd64
+when the CPU reports it, and NEON on arm64. `BatchPath` returns `"scalar"`,
+`"avx2"`, or `"neon"` so a program can report which family it got.
+
+```sh
+GOEXPERIMENT=simd go build ./...
+```
+
+The scalar kernels define the bits; the vector kernels prove parity against
+them in CI on amd64 and arm64.
+
 ## Architecture
 
-`fixed` is a leaf module. The package imports only `math`, `math/bits`, and
-`sync/atomic`. The `math` import provides hardware seeds; exact integer
+`fixed` is a leaf module. The portable files import only `math`, `math/bits`,
+and `sync/atomic`; files behind the `goexperiment.simd` build tag also use
+`unsafe` and `simd/archsimd`. Every `unsafe` operation lives in one file,
+`batch16_raw.go`, which only reinterprets a `Q16` or `Q32` slice as the raw
+words the vector loads take, under compile-time assertions on the layout. The
+`math` import provides hardware seeds; exact integer
 comparisons close every result, so floating point never decides a bit. This
 small dependency surface lets applications use the numeric type without
 importing unrelated systems.

@@ -76,6 +76,21 @@
 // [RotIdentity] or [RotFromTurns] to construct a rotation. Repeated composition
 // can introduce rounding drift; [Rot.Normalize] restores unit length.
 //
+// # Batch operations
+//
+// [BatchAdd16], [BatchSub16], [BatchMul16], and [BatchClamp16] apply one
+// operation across whole slices of Q16. Their results and saturation counts
+// are identical to a loop over the scalar methods; the counter receives one
+// update per call with the number of saturated elements. The destination may
+// be the same slice as a source; any other overlap is undefined. [BatchQ32FromQ16] and
+// [BatchQ16FromQ32] move whole slices across the format boundary and follow
+// the conversion rules of [Q16.ToQ32] and [Q32.ToQ16].
+//
+// Every build runs the scalar kernels. A build with GOEXPERIMENT=simd on Go
+// 1.27 or later selects vector kernels at package initialization on amd64 with
+// AVX2 and on arm64. [BatchPath] reports the active family. The selection
+// changes speed, never bits.
+//
 // # Compatibility contract
 //
 // The two raw representations, their conversions, saturation rules, and
@@ -87,7 +102,11 @@
 //
 // # Dependencies
 //
-// The fixed package imports only math, math/bits, and sync/atomic. The math
+// The portable files import only math, math/bits, and sync/atomic. The math
 // import provides hardware seeds; exact integer comparisons close every
-// result, so floating point never decides a bit.
+// result, so floating point never decides a bit. Files behind the
+// goexperiment.simd build tag also import unsafe and simd/archsimd; no default
+// build reaches them. The unsafe import is confined to batch16_raw.go, which
+// reinterprets a Q16 or Q32 slice as the raw words the vector loads take and
+// asserts the layout at compile time.
 package fixed
