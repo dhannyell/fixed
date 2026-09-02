@@ -269,6 +269,9 @@ func TestArrowRule(t *testing.T) {
 	// "math" is allowed for hardware seeds only; exact integer checks
 	// must close every result, so floats never decide a bit.
 	allow := map[string]bool{`"math"`: true, `"math/bits"`: true, `"sync/atomic"`: true}
+	// Files gated behind goexperiment.simd sit outside the portable contract:
+	// no default build reaches them. They may also touch the vector packages.
+	allowSIMD := map[string]bool{`"simd/archsimd"`: true, `"unsafe"`: true}
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -278,14 +281,24 @@ func TestArrowRule(t *testing.T) {
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		file, err := parser.ParseFile(token.NewFileSet(), name, nil, parser.ImportsOnly)
+		mode := parser.ImportsOnly | parser.ParseComments
+		file, err := parser.ParseFile(token.NewFileSet(), name, nil, mode)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, imp := range file.Imports {
-			if !allow[imp.Path.Value] {
-				t.Errorf("%s imports %s: outside the allowlist", name, imp.Path.Value)
+		gated := false
+		for _, group := range file.Comments {
+			for _, c := range group.List {
+				if strings.HasPrefix(c.Text, "//go:build") && strings.Contains(c.Text, "goexperiment.simd") {
+					gated = true
+				}
 			}
+		}
+		for _, imp := range file.Imports {
+			if allow[imp.Path.Value] || (gated && allowSIMD[imp.Path.Value]) {
+				continue
+			}
+			t.Errorf("%s imports %s: outside the allowlist", name, imp.Path.Value)
 		}
 	}
 }
