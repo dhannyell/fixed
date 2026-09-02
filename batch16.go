@@ -40,52 +40,52 @@ func batchLens2(dst, a int) {
 // host: "scalar", "avx2" or "neon". Every path produces the same bits.
 func BatchPath() string { return kernels.path }
 
-// Add16 stores a[i]+b[i] into dst. Each element saturates on overflow.
+// BatchAdd16 stores a[i]+b[i] into dst. Each element saturates on overflow.
 // All three slices must share one length; dst may alias a or b.
-func Add16(dst, a, b []Q16) {
+func BatchAdd16(dst, a, b []Q16) {
 	batchLens(dst, a, b)
 	if events := kernels.add(dst, a, b); events != 0 {
 		saturationEvents.Add(events)
 	}
 }
 
-// Sub16 stores a[i]-b[i] into dst. Each element saturates on overflow.
+// BatchSub16 stores a[i]-b[i] into dst. Each element saturates on overflow.
 // All three slices must share one length; dst may alias a or b.
-func Sub16(dst, a, b []Q16) {
+func BatchSub16(dst, a, b []Q16) {
 	batchLens(dst, a, b)
 	if events := kernels.sub(dst, a, b); events != 0 {
 		saturationEvents.Add(events)
 	}
 }
 
-// Mul16 stores a[i]*b[i] into dst. It floors each product to Q16.16 and
+// BatchMul16 stores a[i]*b[i] into dst. It floors each product to Q16.16 and
 // saturates on overflow. All three slices must share one length; dst may
 // alias a or b.
-func Mul16(dst, a, b []Q16) {
+func BatchMul16(dst, a, b []Q16) {
 	batchLens(dst, a, b)
 	if events := kernels.mul(dst, a, b); events != 0 {
 		saturationEvents.Add(events)
 	}
 }
 
-// Clamp16 stores a[i] limited to [lo, hi] into dst. It requires lo <= hi.
+// BatchClamp16 stores a[i] limited to [lo, hi] into dst. It requires lo <= hi.
 // A clamp is not an overflow, so it records no saturation event. Both slices
 // must share one length; dst may alias a.
-func Clamp16(dst, a []Q16, lo, hi Q16) {
+func BatchClamp16(dst, a []Q16, lo, hi Q16) {
 	batchLens2(len(dst), len(a))
 	kernels.clamp(dst, a, lo, hi)
 }
 
-// Q32FromQ16 stores a[i] converted to Q32 into dst. The conversion is exact
+// BatchQ32FromQ16 stores a[i] converted to Q32 into dst. The conversion is exact
 // and never saturates. Both slices must share one length.
-func Q32FromQ16(dst []Q32, a []Q16) {
+func BatchQ32FromQ16(dst []Q32, a []Q16) {
 	batchLens2(len(dst), len(a))
 	kernels.q32FromQ16(dst, a)
 }
 
-// Q16FromQ32 stores a[i] floored to the Q16.16 grid into dst. Each element
+// BatchQ16FromQ32 stores a[i] floored to the Q16.16 grid into dst. Each element
 // saturates outside the Q16 range. Both slices must share one length.
-func Q16FromQ32(dst []Q16, a []Q32) {
+func BatchQ16FromQ32(dst []Q16, a []Q32) {
 	batchLens2(len(dst), len(a))
 	if events := kernels.q16FromQ32(dst, a); events != 0 {
 		saturationEvents.Add(events)

@@ -195,9 +195,9 @@ func TestBatchClampMatchesTheScalarPath(t *testing.T) {
 	}
 	ResetSaturationCount()
 	dst := make([]Q16, len(a))
-	Clamp16(dst, a, Q16{raw: -q16RawOne}, Q16{raw: q16RawOne})
+	BatchClamp16(dst, a, Q16{raw: -q16RawOne}, Q16{raw: q16RawOne})
 	if c := SaturationCount(); c != 0 {
-		t.Errorf("Clamp16 recorded %d saturation events, want 0", c)
+		t.Errorf("BatchClamp16 recorded %d saturation events, want 0", c)
 	}
 }
 
@@ -209,23 +209,23 @@ func TestBatchPublicWrappersPublishCounts(t *testing.T) {
 
 	want := add16Scalar(scratch, a, b)
 	ResetSaturationCount()
-	Add16(scratch, a, b)
+	BatchAdd16(scratch, a, b)
 	if got := SaturationCount(); got != want {
-		t.Errorf("Add16 published %d events, want %d", got, want)
+		t.Errorf("BatchAdd16 published %d events, want %d", got, want)
 	}
 
 	want = sub16Scalar(scratch, a, b)
 	ResetSaturationCount()
-	Sub16(scratch, a, b)
+	BatchSub16(scratch, a, b)
 	if got := SaturationCount(); got != want {
-		t.Errorf("Sub16 published %d events, want %d", got, want)
+		t.Errorf("BatchSub16 published %d events, want %d", got, want)
 	}
 
 	want = mul16Scalar(scratch, a, b)
 	ResetSaturationCount()
-	Mul16(scratch, a, b)
+	BatchMul16(scratch, a, b)
 	if got := SaturationCount(); got != want {
-		t.Errorf("Mul16 published %d events, want %d", got, want)
+		t.Errorf("BatchMul16 published %d events, want %d", got, want)
 	}
 }
 
@@ -234,12 +234,12 @@ func TestBatchLengthMismatchPanics(t *testing.T) {
 		name string
 		run  func()
 	}{
-		{"Add16", func() { Add16(make([]Q16, 2), make([]Q16, 3), make([]Q16, 3)) }},
-		{"Sub16", func() { Sub16(make([]Q16, 2), make([]Q16, 3), make([]Q16, 3)) }},
-		{"Mul16", func() { Mul16(make([]Q16, 2), make([]Q16, 3), make([]Q16, 3)) }},
-		{"Clamp16", func() { Clamp16(make([]Q16, 2), make([]Q16, 3), Q16{}, Q16{}) }},
-		{"Q32FromQ16", func() { Q32FromQ16(make([]Q32, 2), make([]Q16, 3)) }},
-		{"Q16FromQ32", func() { Q16FromQ32(make([]Q16, 2), make([]Q32, 3)) }},
+		{"BatchAdd16", func() { BatchAdd16(make([]Q16, 2), make([]Q16, 3), make([]Q16, 3)) }},
+		{"BatchSub16", func() { BatchSub16(make([]Q16, 2), make([]Q16, 3), make([]Q16, 3)) }},
+		{"BatchMul16", func() { BatchMul16(make([]Q16, 2), make([]Q16, 3), make([]Q16, 3)) }},
+		{"BatchClamp16", func() { BatchClamp16(make([]Q16, 2), make([]Q16, 3), Q16{}, Q16{}) }},
+		{"BatchQ32FromQ16", func() { BatchQ32FromQ16(make([]Q32, 2), make([]Q16, 3)) }},
+		{"BatchQ16FromQ32", func() { BatchQ16FromQ32(make([]Q16, 2), make([]Q32, 3)) }},
 	}
 	for _, c := range calls {
 		t.Run(c.name, func(t *testing.T) {
@@ -378,8 +378,8 @@ func TestBatchConversionRoundTrip(t *testing.T) {
 	back := make([]Q16, len(a))
 
 	ResetSaturationCount()
-	Q32FromQ16(wide, a)
-	Q16FromQ32(back, wide)
+	BatchQ32FromQ16(wide, a)
+	BatchQ16FromQ32(back, wide)
 	for i := range a {
 		if back[i] != a[i] {
 			t.Fatalf("element %d = %d, want %d", i, back[i].raw, a[i].raw)

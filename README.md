@@ -143,12 +143,12 @@ batch function in a default build; `avx2` is the same call in a build with
 
 | Operation | per-call loop | scalar | avx2 |
 | --- | --- | --- | --- |
-| `Add16` | 0.98 | 0.71 | 0.35 |
-| `Sub16` | 0.97 | 0.72 | 0.35 |
-| `Mul16` | 0.96 | 0.85 | 0.44 |
-| `Clamp16` | 1.30 | 1.06 | 0.16 |
-| `Q32FromQ16` | 0.50 | 0.38 | 0.27 |
-| `Q16FromQ32` | 0.75 | 0.42 | 0.38 |
+| `BatchAdd16` | 0.98 | 0.71 | 0.35 |
+| `BatchSub16` | 0.97 | 0.72 | 0.35 |
+| `BatchMul16` | 0.96 | 0.85 | 0.44 |
+| `BatchClamp16` | 1.30 | 1.06 | 0.16 |
+| `BatchQ32FromQ16` | 0.50 | 0.38 | 0.27 |
+| `BatchQ16FromQ32` | 0.75 | 0.42 | 0.38 |
 
 The scalar column never costs more than the hand-written loop, so a program
 that never enables the experiment loses nothing by calling the batch function.
@@ -183,11 +183,11 @@ a valid rotation; start with `RotIdentity` or `RotFromTurns`.
 
 ## Batch operations
 
-`Add16`, `Sub16`, `Mul16`, and `Clamp16` apply one operation across whole
-slices of `Q16`. Every slice in a call must share one length, and the
-destination may alias a source. `Q32FromQ16` and `Q16FromQ32` move whole slices
-across the format boundary and follow the conversion rules of `Q16.ToQ32` and
-`Q32.ToQ16`. A batch call adds the number of saturated elements to the
+`BatchAdd16`, `BatchSub16`, `BatchMul16`, and `BatchClamp16` apply one
+operation across whole slices of `Q16`. Every slice in a call must share one
+length, and the destination may alias a source. `BatchQ32FromQ16` and
+`BatchQ16FromQ32` move whole slices across the format boundary and follow the
+conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number of saturated elements to the
 saturation counter in one update, so `SaturationCount` reports the same total
 as a loop over the scalar methods.
 
