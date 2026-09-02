@@ -4,7 +4,6 @@ package fixed
 
 import (
 	"simd/archsimd"
-	"unsafe"
 )
 
 // NEON is mandatory on ARMv8, so every kernel here runs on every arm64 CPU.
@@ -21,18 +20,6 @@ func selectKernels() batchKernels {
 		q32FromQ16: q32FromQ16NEON,
 		q16FromQ32: q16FromQ32NEON,
 	}
-}
-
-// rawInt32 reinterprets a Q16 slice as int32. Q16 is struct{raw int32}, so the
-// layout is identical.
-func rawInt32(s []Q16) []int32 {
-	return unsafe.Slice((*int32)(unsafe.Pointer(unsafe.SliceData(s))), len(s))
-}
-
-// rawInt64 reinterprets a Q32 slice as int64. Q32 is struct{raw int64}, so the
-// layout is identical.
-func rawInt64(s []Q32) []int64 {
-	return unsafe.Slice((*int64)(unsafe.Pointer(unsafe.SliceData(s))), len(s))
 }
 
 // vecLaneSum adds the four lanes of a counter vector. The counter holds one

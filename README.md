@@ -207,7 +207,10 @@ them in CI on amd64 and arm64.
 
 `fixed` is a leaf module. The portable files import only `math`, `math/bits`,
 and `sync/atomic`; files behind the `goexperiment.simd` build tag also use
-`unsafe` and `simd/archsimd`. The `math` import provides hardware seeds; exact integer
+`unsafe` and `simd/archsimd`. Every `unsafe` operation lives in one file,
+`batch16_raw.go`, which only reinterprets a `Q16` or `Q32` slice as the raw
+words the vector loads take, under compile-time assertions on the layout. The
+`math` import provides hardware seeds; exact integer
 comparisons close every result, so floating point never decides a bit. This
 small dependency surface lets applications use the numeric type without
 importing unrelated systems.

@@ -105,5 +105,7 @@
 // import provides hardware seeds; exact integer comparisons close every
 // result, so floating point never decides a bit. Files behind the
 // goexperiment.simd build tag also import unsafe and simd/archsimd; no default
-// build reaches them.
+// build reaches them. The unsafe import is confined to batch16_raw.go, which
+// reinterprets a Q16 or Q32 slice as the raw words the vector loads take and
+// asserts the layout at compile time.
 package fixed

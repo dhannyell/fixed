@@ -5,7 +5,6 @@ package fixed
 import (
 	"math/bits"
 	"simd/archsimd"
-	"unsafe"
 )
 
 // The compiler emits vector instructions without a feature guard, at every
@@ -35,18 +34,6 @@ func selectKernels() batchKernels {
 		k.q16FromQ32 = q16FromQ32AVX2
 	}
 	return k
-}
-
-// rawInt32 reinterprets a Q16 slice as int32. Q16 is struct{raw int32}, so the
-// layout is identical.
-func rawInt32(s []Q16) []int32 {
-	return unsafe.Slice((*int32)(unsafe.Pointer(unsafe.SliceData(s))), len(s))
-}
-
-// rawInt64 reinterprets a Q32 slice as int64. Q32 is struct{raw int64}, so the
-// layout is identical.
-func rawInt64(s []Q32) []int64 {
-	return unsafe.Slice((*int64)(unsafe.Pointer(unsafe.SliceData(s))), len(s))
 }
 
 // vecAddSat adds two vectors with Q16 saturation and returns the saturated
