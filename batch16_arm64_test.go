@@ -9,7 +9,10 @@ import "testing"
 func init() {
 	addKernels = append(addKernels, batchKernel{"neon", add16NEON})
 	subKernels = append(subKernels, batchKernel{"neon", sub16NEON})
+	mulKernels = append(mulKernels, batchKernel{"neon", mul16NEON})
 	clampKernels = append(clampKernels, batchClampKernel{"neon", clamp16NEON})
+	widenKernels = append(widenKernels, batchWidenKernel{"neon", q32FromQ16NEON})
+	narrowKernels = append(narrowKernels, batchNarrowKernel{"neon", q16FromQ32NEON})
 }
 
 // TestBatchPathNamesTheActiveKernels ties the introspection to the kernels
