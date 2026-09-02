@@ -82,9 +82,9 @@
 // operation across whole slices of Q16. Their results and saturation counts
 // are identical to a loop over the scalar methods; the counter receives one
 // update per call with the number of saturated elements. The destination may
-// be the same slice as a source; any other overlap is undefined. [BatchQ32FromQ16] and
-// [BatchQ16FromQ32] move whole slices across the format boundary and follow
-// the conversion rules of [Q16.ToQ32] and [Q32.ToQ16].
+// be the same slice as a source; any other overlap is undefined.
+// [BatchQ32FromQ16] and [BatchQ16FromQ32] move whole slices across the format
+// boundary and follow the conversion rules of [Q16.ToQ32] and [Q32.ToQ16].
 //
 // Every build runs the scalar kernels. A build with GOEXPERIMENT=simd on Go
 // 1.27 or later selects vector kernels at package initialization on amd64 with

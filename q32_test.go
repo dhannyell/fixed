@@ -298,10 +298,8 @@ func TestArrowRule(t *testing.T) {
 	}
 }
 
-// simdGated reports whether a file's build constraint excludes it from every
-// build that lacks the simd experiment. It evaluates the constraint with all
-// tags true except goexperiment.simd, so an architecture tag alone cannot
-// open the allowlist.
+// simdGated evaluates the build constraint with SIMD false and every other tag
+// true. This is sufficient for the positive constraints used by SIMD files.
 func simdGated(t *testing.T, file *ast.File) bool {
 	for _, group := range file.Comments {
 		if group.Pos() > file.Package {

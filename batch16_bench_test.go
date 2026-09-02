@@ -12,9 +12,8 @@ var benchSinkBatch int64
 // a run that must stream from memory.
 var benchSizes = []int{64, 1024, 65536}
 
-// benchInputs builds operands with the house stride, narrowed so no element
-// saturates. The probe measures the hot path; a workload that saturates often
-// changes the scalar cost and must be measured with its own profile.
+// benchInputs builds deterministic, non-saturating operands for hot-path
+// measurements. Saturating workloads need separate measurements.
 func benchInputs(n int) (a, b []Q16) {
 	a, b = make([]Q16, n), make([]Q16, n)
 	u := uint32(1)
@@ -45,7 +44,6 @@ func withKernels(k batchKernels, fn func()) {
 	fn()
 }
 
-// runBatch names one benchmark case as op/impl/n so benchstat can group it.
 func runBatch(b *testing.B, op, impl string, n int, run func()) {
 	b.Run("op="+op+"/impl="+impl+"/n="+strconv.Itoa(n), func(b *testing.B) {
 		b.SetBytes(int64(n) * 4)

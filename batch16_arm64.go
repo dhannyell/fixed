@@ -6,10 +6,8 @@ import (
 	"simd/archsimd"
 )
 
-// NEON is mandatory on ARMv8, so every kernel here runs on every arm64 CPU.
-// There is no tier to choose.
+// NEON is mandatory on ARMv8, so these kernels run on every arm64 CPU.
 
-// selectKernels returns the kernels for this CPU.
 func selectKernels() batchKernels {
 	return batchKernels{
 		path:       "neon",
@@ -37,9 +35,9 @@ func vecLaneSum(count archsimd.Int32x4) uint64 {
 	return events
 }
 
-// add16NEON adds four lanes per step. NEON has a saturating 32-bit add, so the
-// clamp is one instruction. Mask32x4 has no bitmask form, so the counter
-// accumulates the compare result as a vector of 0 and -1 lanes.
+// add16NEON adds four lanes per step. AddSaturated maps to one instruction.
+// Mask32x4 has no bitmask form, so the counter accumulates compare results as
+// a vector of 0 and -1 lanes.
 func add16NEON(dst, a, b []Q16) uint64 {
 	const lanes = 4
 	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
@@ -64,7 +62,6 @@ func add16NEON(dst, a, b []Q16) uint64 {
 	return events + vecLaneSum(count) + add16Scalar(dst[i:], a[i:], b[i:])
 }
 
-// sub16NEON subtracts four lanes per step with the saturating NEON difference.
 func sub16NEON(dst, a, b []Q16) uint64 {
 	const lanes = 4
 	rd, ra, rb := rawInt32(dst), rawInt32(a), rawInt32(b)
@@ -101,12 +98,11 @@ func clamp16NEON(dst, a []Q16, lo, hi Q16) {
 	clamp16Scalar(dst[i:], a[i:], lo, hi)
 }
 
-// vecPackHalves merges two half-filled vectors, each carrying two results in
-// its low lanes, into one vector of four. NEON narrows only two lanes at a
-// time, so every 64-bit kernel ends here.
+// vecPackHalves combines two narrowed halves. NEON narrows two 64-bit lanes at
+// a time.
 func vecPackHalves(lo, hi archsimd.Int32x4) archsimd.Int32x4 {
-	// ConcatEven spreads the two halves to lanes 0 and 2; ConcatOdd does the
-	// same for lanes 1 and 3; the transpose then closes the four.
+	// ConcatEven places the low lanes at positions 0 and 2. ConcatOdd places
+	// the high lanes at positions 1 and 3.
 	return lo.ConcatEven(hi).InterleaveEven(lo.ConcatOdd(hi))
 }
 

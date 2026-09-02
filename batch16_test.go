@@ -6,7 +6,6 @@ import (
 	"testing"
 )
 
-// batchKernel names one add or mul implementation for the parity grid.
 type batchKernel struct {
 	name string
 	fn   func(dst, a, b []Q16) uint64
@@ -20,7 +19,6 @@ var (
 	mulKernels = []batchKernel{{"scalar", mul16Scalar}}
 )
 
-// batchClampKernel names one clamp implementation. A clamp records no events.
 type batchClampKernel struct {
 	name string
 	fn   func(dst, a []Q16, lo, hi Q16)
@@ -28,14 +26,11 @@ type batchClampKernel struct {
 
 var clampKernels = []batchClampKernel{{"scalar", clamp16Scalar}}
 
-// batchWidenKernel names one Q16 to Q32 widening. The widening is exact, so
-// it records no events.
 type batchWidenKernel struct {
 	name string
 	fn   func(dst []Q32, a []Q16)
 }
 
-// batchNarrowKernel names one Q32 to Q16 narrowing.
 type batchNarrowKernel struct {
 	name string
 	fn   func(dst []Q16, a []Q32) uint64
@@ -112,9 +107,8 @@ func TestBatchOpsMatchTheScalarPath(t *testing.T) {
 	}
 }
 
-// TestBatchAliasingKeepsResults proves a kernel reads each lane before it
-// writes it, so dst may name the same slice as either source. Other overlaps
-// are outside the contract and are not tested.
+// TestBatchAliasingKeepsResults checks exact in-place operation with either
+// source. Shifted overlap is outside the contract.
 func TestBatchAliasingKeepsResults(t *testing.T) {
 	a, b := batchPairs()
 	ops := []struct {
@@ -295,7 +289,7 @@ func TestBatchPathNamesAKnownFamily(t *testing.T) {
 	}
 }
 
-// batchStride is the house pseudo-random step. It runs in uint32 because the
+// batchStride generates deterministic test inputs. It uses uint32 because the
 // value does not fit in int32.
 const batchStride = uint32(2654435761)
 
@@ -402,8 +396,8 @@ func TestBatchConversionsMatchTheScalarPath(t *testing.T) {
 	}
 }
 
-// TestBatchConversionRoundTrip proves the widening loses nothing: every Q16
-// survives a trip through Q32 unchanged.
+// TestBatchConversionRoundTrip checks that widening and narrowing preserve
+// every Q16 value.
 func TestBatchConversionRoundTrip(t *testing.T) {
 	a, _ := batchPairs()
 	wide := make([]Q32, len(a))

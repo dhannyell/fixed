@@ -9,10 +9,9 @@ import "unsafe"
 // []int32 and []int64; a copy would cost more than the kernel saves.
 
 // Q16 is struct{raw int32} and Q32 is struct{raw int64}, so each slice already
-// has the layout the kernels want. These constants fail the build if that ever
-// stops holding: a uintptr constant cannot go negative, so one of each pair
-// breaks the moment a size diverges. A one-field struct also inherits its
-// field's alignment, so equal sizes leave no other layout difference.
+// has the layout required by the kernels. The paired uintptr differences fail
+// to compile if either size changes. A one-field struct has its field's
+// alignment, so equal sizes leave no other layout difference.
 const (
 	_ = unsafe.Sizeof(Q16{}) - unsafe.Sizeof(int32(0))
 	_ = unsafe.Sizeof(int32(0)) - unsafe.Sizeof(Q16{})
