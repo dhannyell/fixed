@@ -75,13 +75,22 @@ All formats use the same explicit rule for each operation:
 | `Sqrt` | Square root floored to the selected format |
 | `Round`, `MustParse` | Nearest representable value; exact halves round away from zero |
 | `Q48.MulAdd16` | Exact `Q16` product floored to Q48.16, then added with saturation on overflow |
-| `Q32.ToQ16`, `Q32.ToQ48`, `Q48.ToQ16` | Floored to the target grid, with saturation outside the target range |
+| `Q16.ToQ32`, `Q16.ToQ48` | Exact; the grid gets finer and the range gets wider |
+| `Q32.ToQ16` | Floored to the coarser grid, with saturation outside the narrower range |
+| `Q32.ToQ48` | Floored to the coarser grid; the range gets wider, so no saturation |
+| `Q48.ToQ16` | Exact on the shared grid, with saturation outside the narrower range |
+| `Q48.ToQ32` | Exact on the finer grid, with saturation outside the narrower range |
 
-`Q16.ToQ32`, `Q16.ToQ48`, and `Q48.ToQ32` widen. The first two are exact and
-never saturate; `Q48.ToQ32` saturates when the integer part does not fit 31
-bits. `Q16` and `Q48` share one fraction grid, so `Q48.ToQ16` only saturates
-and `Q32.ToQ48` only floors. Narrowing and division deliberately use different
-rules: narrowing floors, while division truncates toward zero.
+A conversion applies two independent rules. A finer fraction grid is exact
+and a coarser one floors. A wider integer range never saturates and a
+narrower one saturates. `Q48.ToQ32` refines the grid and narrows the range
+at the same time. Conversion and division deliberately use different
+rounding: a coarser grid floors, while division truncates toward zero.
+
+`Q48.Int`, `Q48FromInt`, and `Q48FromRatio` use `int64`. The 48-bit integer
+range does not fit an `int` on 32-bit architectures, and a truncated `int`
+would break determinism between architectures. `Q32` and `Q16` keep `int`,
+because their integer range fits 32 bits.
 
 `Q48` exists for sums of `Q16` products. A product has at most 32 integer
 bits, and `MulAdd16` keeps 16 bits of headroom above it, so a sum of up to

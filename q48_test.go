@@ -3,15 +3,26 @@ package fixed_test
 import (
 	"math"
 	"math/big"
-	"strconv"
 	"testing"
 
 	"github.com/dhannyell/fixed"
 )
 
-// q48Int builds a wide integer without an int argument, so the tests also
-// compile on 32-bit architectures.
-func q48Int(i int64) fixed.Q48 { return fixed.Q48FromRaw(i << 16) }
+var bigQ48Scale = new(big.Int).Lsh(big.NewInt(1), 16)
+
+func oracleQ48Mul(a, b int64) int64 {
+	z := new(big.Int).Mul(big.NewInt(a), big.NewInt(b))
+	// Div with a positive divisor floors, as does the arithmetic shift.
+	z.Div(z, bigQ48Scale)
+	return clampRaw(z)
+}
+
+func oracleQ48Div(a, b int64) int64 {
+	z := new(big.Int).Lsh(big.NewInt(a), 16)
+	// Quo truncates toward zero.
+	z.Quo(z, big.NewInt(b))
+	return clampRaw(z)
+}
 
 func oracleQ48Sqrt(raw int64) int64 {
 	z := new(big.Int).Lsh(big.NewInt(raw), 16)
@@ -29,8 +40,8 @@ func TestQ48MulAndDivProduceExactBits(t *testing.T) {
 		t.Errorf("3/2 = %d, want %d", got, int64(3)<<15)
 	}
 	// The product needs the high half of the 128-bit multiply.
-	wide := q48Int(1 << 40)
-	if got := wide.Mul(fixed.Q48FromRatio(1, 1<<10)); !got.Eq(q48Int(1 << 30)) {
+	wide := fixed.Q48FromInt(1 << 40)
+	if got := wide.Mul(fixed.Q48FromRatio(1, 1<<10)); !got.Eq(fixed.Q48FromInt(1 << 30)) {
 		t.Errorf("2^40 * 2^-10 = %d, want 2^30", got.Raw())
 	}
 }
@@ -88,22 +99,16 @@ func TestQ48SaturationClampsAndCounts(t *testing.T) {
 	}
 }
 
-// TestQ48FromIntSaturatesAtTheIntegerBounds needs int arguments wider than
-// 32 bits, so it runs only on 64-bit architectures.
 func TestQ48FromIntSaturatesAtTheIntegerBounds(t *testing.T) {
-	if strconv.IntSize < 64 {
-		t.Skip("wide int inputs require a 64-bit architecture")
-	}
-	// A variable keeps the constants out of the 32-bit compile.
-	bound := int64(1) << 47
+	const bound = int64(1) << 47
 	cases := []struct {
 		name string
 		op   func() fixed.Q48
 		want fixed.Q48
 	}{
-		{"FromRatio overflow", func() fixed.Q48 { return fixed.Q48FromRatio(int(-bound), -1) }, fixed.Q48MaxValue()},
-		{"FromInt overflow", func() fixed.Q48 { return fixed.Q48FromInt(int(bound)) }, fixed.Q48MaxValue()},
-		{"FromInt underflow", func() fixed.Q48 { return fixed.Q48FromInt(int(-bound - 1)) }, fixed.Q48MinValue()},
+		{"FromRatio overflow", func() fixed.Q48 { return fixed.Q48FromRatio(-bound, -1) }, fixed.Q48MaxValue()},
+		{"FromInt overflow", func() fixed.Q48 { return fixed.Q48FromInt(bound) }, fixed.Q48MaxValue()},
+		{"FromInt underflow", func() fixed.Q48 { return fixed.Q48FromInt(-bound - 1) }, fixed.Q48MinValue()},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -117,7 +122,7 @@ func TestQ48FromIntSaturatesAtTheIntegerBounds(t *testing.T) {
 		})
 	}
 	fixed.ResetSaturationCount()
-	if got := fixed.Q48FromInt(int(-bound)); !got.Eq(fixed.Q48MinValue()) {
+	if got := fixed.Q48FromInt(-bound); !got.Eq(fixed.Q48MinValue()) {
 		t.Errorf("Q48FromInt(-1<<47) = %d, want MinValue", got.Raw())
 	}
 	if c := fixed.SaturationCount(); c != 0 {
@@ -168,12 +173,16 @@ func TestQ48SqrtFloorsTheRoot(t *testing.T) {
 
 func TestQ48IntegerConversions(t *testing.T) {
 	cases := []struct {
-		num, den                  int
-		floor, ceil, round, trunc int
+		num, den                  int64
+		floor, ceil, round, trunc int64
 	}{
 		{5, 2, 2, 3, 3, 2},
 		{-5, 2, -3, -2, -3, -2},
 		{-1, 2, -1, 0, -1, 0},
+		// These integer parts do not fit a 32-bit int.
+		{1 << 33, 1, 1 << 33, 1 << 33, 1 << 33, 1 << 33},
+		{-1 << 33, 1, -1 << 33, -1 << 33, -1 << 33, -1 << 33},
+		{-1 << 47, 1, -1 << 47, -1 << 47, -1 << 47, -1 << 47},
 	}
 	for _, c := range cases {
 		q := fixed.Q48FromRatio(c.num, c.den)
@@ -239,10 +248,10 @@ func TestQ48ConversionsFollowTheGridLaw(t *testing.T) {
 	if got := fixed.Q48FromInt(1 << 15).ToQ16(); !got.Eq(fixed.Q16MaxValue()) {
 		t.Errorf("ToQ16(2^15) = %d, want Q16MaxValue", got.Raw())
 	}
-	if got := q48Int(1 << 31).ToQ32(); !got.Eq(fixed.Q32MaxValue()) {
+	if got := fixed.Q48FromInt(1 << 31).ToQ32(); !got.Eq(fixed.Q32MaxValue()) {
 		t.Errorf("ToQ32(2^31) = %d, want Q32MaxValue", got.Raw())
 	}
-	if got := q48Int(-1<<31 - 1).ToQ32(); !got.Eq(fixed.Q32MinValue()) {
+	if got := fixed.Q48FromInt(-1<<31 - 1).ToQ32(); !got.Eq(fixed.Q32MinValue()) {
 		t.Errorf("ToQ32(-2^31-1) = %d, want Q32MinValue", got.Raw())
 	}
 }
@@ -274,7 +283,7 @@ func TestQ48AccumulatesBeyondTheQ16Range(t *testing.T) {
 	for range 1 << 12 {
 		acc = acc.MulAdd16(x, x)
 	}
-	if want := q48Int(1 << 32); !acc.Eq(want) {
+	if want := fixed.Q48FromInt(1 << 32); !acc.Eq(want) {
 		t.Errorf("sum = %s, want %s", acc, want)
 	}
 	if c := fixed.SaturationCount(); c != 0 {
@@ -336,6 +345,37 @@ func TestQ48MustParseReadsDecimalLiterals(t *testing.T) {
 	}
 	t.Run("malformed/6.", func(t *testing.T) {
 		expectPanic(t, func() { fixed.Q48MustParse("6.") })
+	})
+}
+
+func FuzzQ48MulVsBig(f *testing.F) {
+	for _, v := range fuzzSeeds() {
+		f.Add(v, v)
+		f.Add(v, int64(1))
+	}
+	f.Fuzz(func(t *testing.T, a, b int64) {
+		qa, qb := fixed.Q48FromRaw(a), fixed.Q48FromRaw(b)
+		if got, want := qa.Mul(qb).Raw(), oracleQ48Mul(a, b); got != want {
+			t.Errorf("Mul(%d, %d) = %d, oracle says %d", a, b, got, want)
+		}
+		if x, y := qa.Mul(qb), qb.Mul(qa); !x.Eq(y) {
+			t.Errorf("Mul(%d, %d) != Mul(%d, %d)", a, b, b, a)
+		}
+	})
+}
+
+func FuzzQ48DivVsBig(f *testing.F) {
+	for _, v := range fuzzSeeds() {
+		f.Add(v, v)
+		f.Add(v, int64(1))
+	}
+	f.Fuzz(func(t *testing.T, a, b int64) {
+		if b == 0 {
+			t.Skip()
+		}
+		if got, want := fixed.Q48FromRaw(a).Div(fixed.Q48FromRaw(b)).Raw(), oracleQ48Div(a, b); got != want {
+			t.Errorf("Div(%d, %d) = %d, oracle says %d", a, b, got, want)
+		}
 	})
 }
 

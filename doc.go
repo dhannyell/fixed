@@ -35,12 +35,23 @@
 //
 // # Formats and conversion
 //
-// A widening conversion is exact and never saturates. A narrowing conversion
-// floors to the target grid and saturates outside the target range.
-// [Q16.ToQ32], [Q16.ToQ48], and [Q48.ToQ32] widen. [Q32.ToQ16], [Q32.ToQ48],
-// and [Q48.ToQ16] narrow. Q16 and Q48 share one fraction grid, so [Q48.ToQ16]
-// only saturates and [Q32.ToQ48] only floors. [Q48.ToQ32] saturates when the
-// integer part does not fit 31 bits.
+// A conversion changes the fraction grid, the integer range, or both. Each
+// change follows one rule:
+//
+//   - A finer fraction grid is exact. A coarser fraction grid floors.
+//   - A wider integer range never saturates. A narrower integer range
+//     saturates outside the target range.
+//
+// [Q16.ToQ32] and [Q16.ToQ48] widen both. They are exact and never saturate.
+// [Q32.ToQ16] narrows both. It floors and saturates. Q16 and Q48 share one
+// fraction grid, so [Q48.ToQ16] only saturates and [Q32.ToQ48] only floors.
+// [Q48.ToQ32] moves in both directions: the grid gets finer, so it is exact,
+// and the integer range shrinks to 32 bits, so it saturates.
+//
+// Int returns the integer part of a value. [Q32.Int] and [Q16.Int] return an
+// int, because their integer range fits a 32-bit int. [Q48.Int] returns an
+// int64, because its integer range does not. For the same reason [Q48FromInt]
+// and [Q48FromRatio] take int64 arguments.
 //
 // For any Q16 values a and b, a.Mul(b) equals a.ToQ32().Mul(b.ToQ32()).ToQ16()
 // and also equals Q48Zero().MulAdd16(a, b).ToQ16(). The same identity does not

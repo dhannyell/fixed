@@ -17,27 +17,26 @@ const (
 )
 
 // Q48FromInt returns i as a Q48 value. It saturates outside [-2⁴⁷, 2⁴⁷-1].
-func Q48FromInt(i int) Q48 {
-	// The bounds exceed a 32-bit int, so the comparison widens first.
-	v := int64(i)
-	if v > 1<<47-1 {
+// The integer range exceeds a 32-bit int, so the argument is an int64.
+func Q48FromInt(i int64) Q48 {
+	if i > 1<<47-1 {
 		saturationEvents.Add(1)
 		return Q48{raw: q48RawMax}
 	}
-	if v < -1<<47 {
+	if i < -1<<47 {
 		saturationEvents.Add(1)
 		return Q48{raw: q48RawMin}
 	}
-	return Q48{raw: v << 16}
+	return Q48{raw: i << 16}
 }
 
 // Q48FromRatio returns num/den truncated toward zero. It saturates on
 // overflow. It panics when den is zero.
-func Q48FromRatio(num, den int) Q48 {
+func Q48FromRatio(num, den int64) Q48 {
 	if den == 0 {
 		panicDivZero()
 	}
-	return q48DivMag(magnitude(int64(num)), magnitude(int64(den)), (num < 0) != (den < 0))
+	return q48DivMag(magnitude(num), magnitude(den), (num < 0) != (den < 0))
 }
 
 // Q48FromRaw returns the Q48 value with the specified signed bit pattern.
@@ -224,19 +223,22 @@ func (q Q48) Round() Q48 {
 	return Q48{raw: -int64(rounded)} // A magnitude of 1<<63 converts to MinValue.
 }
 
-// Int returns the integer part truncated toward zero.
-func (q Q48) Int() int {
+// Int returns the integer part truncated toward zero. The integer part does
+// not fit a 32-bit int, so the result is an int64 on every architecture.
+func (q Q48) Int() int64 {
 	if q.raw >= 0 {
-		return int(q.raw >> 16)
+		return q.raw >> 16
 	}
-	return int(-int64(magnitude(q.raw) >> 16))
+	return -int64(magnitude(q.raw) >> 16)
 }
 
 // ToQ16 saturates q to the Q16 range. Both types share one fraction grid,
 // so no rounding occurs.
 func (q Q48) ToQ16() Q16 { return q16Saturate(q.raw) }
 
-// ToQ32 returns q widened to Q32.32. It saturates outside the Q32 range.
+// ToQ32 returns q as a Q32.32 value. The fraction grid gets finer, so no
+// rounding occurs. The integer range shrinks, so it saturates outside the
+// Q32 range.
 func (q Q48) ToQ32() Q32 {
 	// The shift is exact only when the integer part fits 31 bits plus sign.
 	if top := q.raw >> 47; top != 0 && top != -1 {
