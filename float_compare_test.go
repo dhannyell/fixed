@@ -405,3 +405,114 @@ func BenchmarkCompareAtan2Turns(b *testing.B) {
 		benchSinkFloat64 = acc
 	})
 }
+
+func compareQ48Inputs() ([compareMask + 1]fixed.Q48, [compareMask + 1]float64) {
+	var q [compareMask + 1]fixed.Q48
+	var f [compareMask + 1]float64
+	for i := range q {
+		raw := int64(i+1) * 2654435761
+		q[i] = fixed.Q48FromRaw(raw)
+		f[i] = float64(raw) * 0x1p-16
+	}
+	return q, f
+}
+
+func BenchmarkCompareQ48Add(b *testing.B) {
+	q, f := compareQ48Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		step := fixed.Q48FromRaw(1)
+		var acc int64
+		for i := range b.N {
+			acc += q[i&compareMask].Add(step).Raw()
+		}
+		benchSinkQ48 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		const step = 0x1p-16
+		var acc float64
+		for i := range b.N {
+			acc += f[i&compareMask] + step
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
+func BenchmarkCompareQ48Mul(b *testing.B) {
+	q, f := compareQ48Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		factor := fixed.Q48FromRatio(255, 256)
+		var acc int64
+		for i := range b.N {
+			acc += q[i&compareMask].Mul(factor).Raw()
+		}
+		benchSinkQ48 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		const factor = 255.0 / 256.0
+		var acc float64
+		for i := range b.N {
+			acc += f[i&compareMask] * factor
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
+// BenchmarkCompareQ48MulAdd16 pairs the accumulator with a float64 sum of
+// float32 products, the shape a float solver would use for the same dot
+// product.
+func BenchmarkCompareQ48MulAdd16(b *testing.B) {
+	q, f := compareQ16Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		factor := fixed.Q16FromRatio(255, 256)
+		acc := fixed.Q48Zero()
+		for i := range b.N {
+			acc = acc.MulAdd16(q[i&compareMask], factor)
+		}
+		benchSinkQ48 = acc.Raw()
+	})
+	b.Run("float64", func(b *testing.B) {
+		const factor = float32(255.0 / 256.0)
+		var acc float64
+		for i := range b.N {
+			acc += float64(f[i&compareMask] * factor)
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
+func BenchmarkCompareQ48Div(b *testing.B) {
+	q, f := compareQ48Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		divisor := fixed.Q48FromInt(3)
+		var acc int64
+		for i := range b.N {
+			acc += q[i&compareMask].Div(divisor).Raw()
+		}
+		benchSinkQ48 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		var acc float64
+		for i := range b.N {
+			acc += f[i&compareMask] / 3
+		}
+		benchSinkFloat64 = acc
+	})
+}
+
+func BenchmarkCompareQ48Sqrt(b *testing.B) {
+	q, f := compareQ48Inputs()
+	b.Run("fixed", func(b *testing.B) {
+		var acc int64
+		for i := range b.N {
+			acc += q[i&compareMask].Sqrt().Raw()
+		}
+		benchSinkQ48 = acc
+	})
+	b.Run("float64", func(b *testing.B) {
+		var acc float64
+		for i := range b.N {
+			acc += math.Sqrt(f[i&compareMask])
+		}
+		benchSinkFloat64 = acc
+	})
+}

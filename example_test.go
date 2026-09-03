@@ -72,6 +72,20 @@ func ExampleQ32_Clamp() {
 	// 100
 }
 
+func ExampleQ48_MulAdd16() {
+	// Q48 accumulates Q16 products that would saturate Q16 on their own.
+	x := fixed.Q16FromInt(200)
+	var acc fixed.Q48
+	for range 4 {
+		acc = acc.MulAdd16(x, x) // 4 × 40000 exceeds the Q16 range of 32768.
+	}
+	fmt.Println(acc)
+	fmt.Println(acc.ToQ16().Eq(fixed.Q16MaxValue()))
+	// Output:
+	// 160000
+	// true
+}
+
 func ExampleQ16() {
 	// Q16 is the compact format. It converts to and from Q32.
 	price := fixed.Q16FromRatio(5, 2)

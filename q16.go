@@ -194,6 +194,10 @@ func (q Q16) Int() int { return int(int64(q.raw) / q16RawOne) }
 // ToQ32 returns q widened to Q32.32. The conversion is exact and never saturates.
 func (q Q16) ToQ32() Q32 { return Q32{raw: int64(q.raw) << 16} }
 
+// ToQ48 returns q widened to Q48.16. Both types share one fraction grid, so
+// the conversion is a sign extension. It never saturates.
+func (q Q16) ToQ48() Q48 { return Q48{raw: int64(q.raw)} }
+
 // q16SaturatedQuotient handles a quotient outside the Q16 range.
 func q16SaturatedQuotient(neg bool) Q16 {
 	saturationEvents.Add(1)

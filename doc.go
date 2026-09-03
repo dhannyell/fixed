@@ -1,10 +1,12 @@
 // Package fixed implements deterministic signed fixed-point arithmetic.
 //
-// The package provides two formats without choosing a default. [Q32] stores
+// The package provides three formats without choosing a default. [Q32] stores
 // Q32.32 in an int64, with resolution 2⁻³² and range
 // [-2³¹, 2³¹ - 2⁻³²]. [Q16] stores Q16.16 in an int32, with resolution 2⁻¹⁶
-// and range [-2¹⁵, 2¹⁵ - 2⁻¹⁶]. Each operation produces the same bits on every
-// supported architecture.
+// and range [-2¹⁵, 2¹⁵ - 2⁻¹⁶]. [Q48] stores Q48.16 in an int64, with
+// resolution 2⁻¹⁶ and range [-2⁴⁷, 2⁴⁷ - 2⁻¹⁶]; it is the accumulator for Q16
+// products. Each operation produces the same bits on every supported
+// architecture.
 //
 // # Overflow
 //
@@ -12,40 +14,64 @@
 // [SaturationCount] reports saturation events for diagnostics. The counter does
 // not affect fixed-point values or operation results.
 //
-// [Q32.Div] and [Q16.Div] panic for a zero divisor. [Q32FromRatio] and
-// [Q16FromRatio] panic for a zero denominator. [Q32.Sqrt] and [Q16.Sqrt] panic
-// for a negative input.
+// Div panics for a zero divisor in every format. [Q32FromRatio],
+// [Q16FromRatio], and [Q48FromRatio] panic for a zero denominator. Sqrt panics
+// for a negative input in every format.
 //
 // Saturated addition is not associative near the range limits. Do not reorder
 // an accumulation. Use enough numeric headroom to prevent saturation.
 //
 // # Rounding
 //
-// [Q32.Mul] floors the 128-bit product when it converts the result to Q32.32.
-// [Q16.Mul] floors the exact 62-bit product when it converts the result to
-// Q16.16. Both operations match an arithmetic right shift.
+// [Q32.Mul] and [Q48.Mul] floor the 128-bit product when they convert the
+// result to their format. [Q16.Mul] floors the exact 62-bit product when it
+// converts the result to Q16.16. All three operations match an arithmetic
+// right shift. [Q48.MulAdd16] floors the exact Q16 product to Q48.16 and then
+// adds it.
 //
-// [Q32.Div], [Q16.Div], [Q32FromRatio], and [Q16FromRatio] truncate toward
-// zero. [Q32.Sqrt] and [Q16.Sqrt] floor their results. [Q32.Round], [Q16.Round],
-// [Q32MustParse], and [Q16MustParse] round to the nearest representable value.
-// An exact half rounds away from zero.
+// Div and FromRatio truncate toward zero in every format. Sqrt floors its
+// result in every format. Round and MustParse round to the nearest
+// representable value in every format. An exact half rounds away from zero.
 //
 // # Formats and conversion
 //
-// [Q16.ToQ32] widens exactly and never saturates. [Q32.ToQ16] floors to the
-// Q16.16 grid and saturates outside the Q16 range. For any Q16 values a and b,
-// a.Mul(b) equals a.ToQ32().Mul(b.ToQ32()).ToQ16(). The same identity does not
+// A conversion changes the fraction grid, the integer range, or both. Each
+// change follows one rule:
+//
+//   - A finer fraction grid is exact. A coarser fraction grid floors.
+//   - A wider integer range never saturates. A narrower integer range
+//     saturates outside the target range.
+//
+// [Q16.ToQ32] and [Q16.ToQ48] widen both. They are exact and never saturate.
+// [Q32.ToQ16] narrows both. It floors and saturates. Q16 and Q48 share one
+// fraction grid, so [Q48.ToQ16] only saturates and [Q32.ToQ48] only floors.
+// [Q48.ToQ32] moves in both directions: the grid gets finer, so it is exact,
+// and the integer range shrinks to 32 bits, so it saturates.
+//
+// Int returns the integer part of a value. [Q32.Int] and [Q16.Int] return an
+// int, because their integer range fits a 32-bit int. [Q48.Int] returns an
+// int64, because its integer range does not. For the same reason [Q48FromInt]
+// and [Q48FromRatio] take int64 arguments.
+//
+// For any Q16 values a and b, a.Mul(b) equals a.ToQ32().Mul(b.ToQ32()).ToQ16()
+// and also equals Q48Zero().MulAdd16(a, b).ToQ16(). The same identity does not
 // hold for Div because division truncates toward zero and narrowing floors.
+//
+// # Accumulation
+//
+// A Q16 product has at most 32 integer bits. [Q48.MulAdd16] stores it with 16
+// bits of headroom, so a sum of up to 2¹⁶ products of full-range Q16 values
+// cannot saturate. Narrow the sum with [Q48.ToQ16] only when the value is
+// stored, and check [SaturationCount] when the term count is not bounded.
 //
 // # Construction and text
 //
-// [Q32] and [Q16] are opaque. Construct Q32 values with [Q32FromInt],
-// [Q32FromRatio], [Q32MustParse], or [Q32FromRaw]. Construct Q16 values with
-// [Q16FromInt], [Q16FromRatio], [Q16MustParse], or [Q16FromRaw]. The package
-// does not accept float values because a computed float can contain
-// architecture-dependent bits.
+// [Q32], [Q16], and [Q48] are opaque. Construct Q32 values with [Q32FromInt],
+// [Q32FromRatio], [Q32MustParse], or [Q32FromRaw]. Q16 and Q48 have the same
+// four constructors under their own prefixes. The package does not accept float
+// values because a computed float can contain architecture-dependent bits.
 //
-// [Q32.String] and [Q16.String] return exact canonical decimal forms. For every
+// String returns the exact canonical decimal form in every format. For every
 // value q, parsing q.String() with the constructor for its format returns q.
 //
 // # Angles
@@ -93,7 +119,7 @@
 //
 // # Compatibility contract
 //
-// The two raw representations, their conversions, saturation rules, and
+// The three raw representations, their conversions, saturation rules, and
 // rounding rules are part of the public contract. An independent implementation
 // must reproduce these rules before it exchanges raw values with this package.
 // The trigonometric raw outputs are also part of the contract. A compatible

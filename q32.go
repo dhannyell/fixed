@@ -241,6 +241,9 @@ func (q Q32) Int() int {
 // Flooring matches the rounding of Mul.
 func (q Q32) ToQ16() Q16 { return q16Saturate(q.raw >> 16) }
 
+// ToQ48 floors q to the Q48.16 grid. It never saturates.
+func (q Q32) ToQ48() Q48 { return Q48{raw: q.raw >> 16} }
+
 func magnitude(v int64) uint64 {
 	// Branchless absolute value; MinInt64 maps to 2⁶³ unchanged.
 	m := uint64(v >> 63)
