@@ -75,6 +75,7 @@ All formats use the same explicit rule for each operation:
 | `Sqrt` | Square root floored to the selected format |
 | `Round`, `MustParse` | Nearest representable value; exact halves round away from zero |
 | `Q48.MulAdd16` | Exact `Q16` product floored to Q48.16, then added with saturation on overflow |
+| `Q48.Mul16` | `Q48` times `Q16`, floored to Q48.16 with saturation on overflow; same bits as `Mul` on the widened factor |
 | `Q16.ToQ32`, `Q16.ToQ48` | Exact; the grid gets finer and the range gets wider |
 | `Q32.ToQ16` | Floored to the coarser grid, with saturation outside the narrower range |
 | `Q32.ToQ48` | Floored to the coarser grid; the range gets wider, so no saturation |
@@ -186,10 +187,15 @@ number.
 | `BatchClamp16` | 1.30 | 1.06 | 0.16 |
 | `BatchQ32FromQ16` | 0.50 | 0.38 | 0.27 |
 | `BatchQ16FromQ32` | 0.75 | 0.42 | 0.38 |
+| `BatchDot16` | 1.18 | 1.40 | 0.57 |
+| `BatchQ48Mul16` | 1.51 | 1.48 | 0.73 |
 
-In these measurements, every scalar batch function was faster than its
+In these measurements, every scalar `Q16` batch function was faster than its
 hand-written loop. The default build therefore had no batch abstraction penalty
-for this workload. arm64 has a NEON path for all six. Its numbers are not
+for this workload. `BatchDot16` is the exception: its scalar kernel keeps eight
+partial sums so that every path shares one order, and that costs more than a
+serial loop when nothing saturates. The `per-call loop` for `BatchDot16` is a
+serial `Q48.MulAdd16` accumulator; for `BatchQ48Mul16` it is `Q48.Mul16`. arm64 has a NEON path for the six `Q16` functions. Its numbers are not
 published here because only shared CI runners have measured it, and a shared
 runner cannot support the comparison above.
 
@@ -228,6 +234,13 @@ run in place; any other overlap is undefined. `BatchQ32FromQ16` and
 conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number
 of saturated elements to the saturation counter in one update, so
 `SaturationCount` reports the same total as a loop over the scalar methods.
+
+`BatchDot16` sums `Q16` products into one `Q48`. Its order is fixed: element
+`i` joins partial sum `i mod 8`, and the eight partials reduce as a balanced
+tree. Without saturation this equals a loop over `Q48.MulAdd16`. With
+saturation the order decides the bits, so every kernel keeps it, and the result
+is the same on every host. `BatchQ48Mul16` scales a `Q48` slice by a `Q16`
+slice with the rules of `Q48.Mul16`.
 
 Every build runs the scalar kernels. Building with `GOEXPERIMENT=simd` on Go
 1.27 or later selects vector kernels at package initialization: AVX2 on amd64

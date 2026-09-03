@@ -361,6 +361,11 @@ func FuzzQ48MulVsBig(f *testing.F) {
 		if x, y := qa.Mul(qb), qb.Mul(qa); !x.Eq(y) {
 			t.Errorf("Mul(%d, %d) != Mul(%d, %d)", a, b, b, a)
 		}
+		// Mul16 has its own inline path; it must equal Mul on the widened factor.
+		f16 := fixed.Q16FromRaw(int32(b))
+		if got, want := qa.Mul16(f16), qa.Mul(f16.ToQ48()); !got.Eq(want) {
+			t.Errorf("Mul16(%d, %d) = %d, Mul says %d", a, int32(b), got.Raw(), want.Raw())
+		}
 	})
 }
 

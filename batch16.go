@@ -19,6 +19,8 @@ type batchKernels struct {
 	clamp      func(dst, a []Q16, lo, hi Q16)
 	q32FromQ16 func(dst []Q32, a []Q16)
 	q16FromQ32 func(dst []Q16, a []Q32) uint64
+	dot16      func(a, b []Q16) (Q48, uint64)
+	q48Mul16   func(dst, q []Q48, f []Q16) uint64
 }
 
 // kernels holds the dispatch table selected at package initialization.

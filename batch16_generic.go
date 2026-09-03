@@ -13,5 +13,7 @@ func selectKernels() batchKernels {
 		clamp:      clamp16Scalar,
 		q32FromQ16: q32FromQ16Scalar,
 		q16FromQ32: q16FromQ32Scalar,
+		dot16:      dot16Scalar,
+		q48Mul16:   q48Mul16Scalar,
 	}
 }

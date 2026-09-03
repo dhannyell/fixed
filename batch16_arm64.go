@@ -17,6 +17,9 @@ func selectKernels() batchKernels {
 		clamp:      clamp16NEON,
 		q32FromQ16: q32FromQ16NEON,
 		q16FromQ32: q16FromQ32NEON,
+		// The Q48 kernels stay scalar until NEON versions are measured.
+		dot16:    dot16Scalar,
+		q48Mul16: q48Mul16Scalar,
 	}
 }
 
