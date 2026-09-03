@@ -3,11 +3,12 @@
 `fixed` is a small Go package for signed fixed-point arithmetic. Equal inputs
 produce the same result bits on every supported architecture.
 
-The package provides two formats without choosing a default. `Q32` stores
+The package provides three formats without choosing a default. `Q32` stores
 Q32.32 in an `int64`, with resolution 2⁻³² and range
 [-2³¹, 2³¹ - 2⁻³²]. `Q16` stores Q16.16 in an `int32`, with resolution 2⁻¹⁶
-and range [-2¹⁵, 2¹⁵ - 2⁻¹⁶]. Consumers choose the format that fits their
-range and storage requirements.
+and range [-2¹⁵, 2¹⁵ - 2⁻¹⁶]. `Q48` stores Q48.16 in an `int64`, with
+resolution 2⁻¹⁶ and range [-2⁴⁷, 2⁴⁷ - 2⁻¹⁶]; it accumulates `Q16` products.
+Consumers choose the format that fits their range and storage requirements.
 
 The module is pre-v1. Its import path may change before the first stable
 release. It requires Go 1.26.4 or newer.
@@ -48,10 +49,10 @@ Floating-point input can already contain small differences caused by an
 earlier computation. The package cannot recover the intended exact value from
 those bits. For this reason, `fixed` accepts only explicit inputs:
 
-- `Q32FromInt` and `Q16FromInt` for integers.
-- `Q32FromRatio` and `Q16FromRatio` for exact ratios.
-- `Q32MustParse` and `Q16MustParse` for decimal literals.
-- `Q32FromRaw` and `Q16FromRaw` for exact bit patterns.
+- `Q32FromInt`, `Q16FromInt`, and `Q48FromInt` for integers.
+- `Q32FromRatio`, `Q16FromRatio`, and `Q48FromRatio` for exact ratios.
+- `Q32MustParse`, `Q16MustParse`, and `Q48MustParse` for decimal literals.
+- `Q32FromRaw`, `Q16FromRaw`, and `Q48FromRaw` for exact bit patterns.
 
 `String` provides the inverse text boundary. It emits a canonical decimal
 representation, and every value satisfies:
@@ -59,23 +60,40 @@ representation, and every value satisfies:
 ```go
 fixed.Q32MustParse(q32.String()) == q32
 fixed.Q16MustParse(q16.String()) == q16
+fixed.Q48MustParse(q48.String()) == q48
 ```
 
 ## Arithmetic contract
 
-Both formats use the same explicit rule for each operation:
+All formats use the same explicit rule for each operation:
 
 | Operation | Result |
 | --- | --- |
 | `Add`, `Sub` | Exact result in the selected format, with saturation on overflow |
 | `Mul` | Product floored to the selected format, with saturation on overflow |
-| `Div`, `Q32FromRatio`, `Q16FromRatio` | Quotient truncated toward zero, with saturation on overflow |
+| `Div`, `FromRatio` | Quotient truncated toward zero, with saturation on overflow |
 | `Sqrt` | Square root floored to the selected format |
-| `Round`, `Q32MustParse`, `Q16MustParse` | Nearest representable value; exact halves round away from zero |
-| `Q32.ToQ16` | Floored to Q16.16, with saturation on overflow |
+| `Round`, `MustParse` | Nearest representable value; exact halves round away from zero |
+| `Q48.MulAdd16` | Exact `Q16` product floored to Q48.16, then added with saturation on overflow |
+| `Q32.ToQ16`, `Q32.ToQ48`, `Q48.ToQ16` | Floored to the target grid, with saturation outside the target range |
 
-`Q16.ToQ32` is exact and never saturates. Narrowing and division deliberately
-use different rules: narrowing floors, while division truncates toward zero.
+`Q16.ToQ32`, `Q16.ToQ48`, and `Q48.ToQ32` widen. The first two are exact and
+never saturate; `Q48.ToQ32` saturates when the integer part does not fit 31
+bits. `Q16` and `Q48` share one fraction grid, so `Q48.ToQ16` only saturates
+and `Q32.ToQ48` only floors. Narrowing and division deliberately use different
+rules: narrowing floors, while division truncates toward zero.
+
+`Q48` exists for sums of `Q16` products. A product has at most 32 integer
+bits, and `MulAdd16` keeps 16 bits of headroom above it, so a sum of up to
+2¹⁶ full-range products cannot saturate:
+
+```go
+var acc fixed.Q48
+for i := range a {
+	acc = acc.MulAdd16(a[i], b[i])
+}
+dot := acc.ToQ16() // Narrow only when the value is stored.
+```
 
 Division by zero panics. `Sqrt` of a negative value also panics.
 
@@ -104,6 +122,11 @@ occasional high outliers that the median excludes.
 | `Q32.Mul` | 2.8 | 1.4 | 690 | +114% (slower) |
 | `Q32.Div` | 4.7 | 3.1 | 330 | +138% (slower) |
 | `Q32.Sqrt` | 13.6 | 6.1 | 160 | +165% (slower) |
+| `Q48.Add` | 0.5 | 0.5 | 2,100 | −30% (faster) |
+| `Q48.Mul` | 2.6 | 1.5 | 680 | +105% (slower) |
+| `Q48.MulAdd16` | 1.0 | 0.7 | 1,500 | +73% (slower) |
+| `Q48.Div` | 4.3 | 5.1 | 200 | +270% (slower) |
+| `Q48.Sqrt` | 11.4 | 5.5 | 180 | +128% (slower) |
 | `Vec2.Dot` | 3.3 | 3.4 | 290 | +435% (slower) |
 | `Vec2.Len` | 16.0 | 13.1 | 76 | +247% (slower) |
 | `Vec2.Normalize` | 26.4 | 18.3 | 55 | +382% (slower) |
@@ -126,8 +149,10 @@ value in domain; `bench_test.go` shows the exact chains.
 The comparison column reports the raw change in throughput time:
 `(fixed time / float time - 1) × 100`. A negative value means fixed was faster;
 a positive value means it was slower. The paired benchmarks use the same
-prebuilt inputs. Q16 is compared with `float32`; Q32, vectors, and rotations
-are compared with `float64`. These safe-domain float kernels do not reproduce
+prebuilt inputs. Q16 is compared with `float32`; Q32, Q48, vectors, and
+rotations are compared with `float64`. `Q48.MulAdd16` is compared with a
+`float64` sum of `float32` products, the shape a float solver uses for the
+same dot product. These safe-domain float kernels do not reproduce
 the package's saturation, rounding, or cross-architecture bit contract. Run
 them with:
 

@@ -43,18 +43,53 @@ func Q16MustParse(s string) Q16 {
 // conversion is exact, so the Q32 formatter emits the same value.
 func (q Q16) String() string { return q.ToQ32().String() }
 
+// Q48MustParse parses a decimal literal. It rounds to the nearest Q48 value,
+// with exact halves away from zero. It saturates outside the Q48 range and
+// panics on malformed input.
+func Q48MustParse(s string) Q48 {
+	intPart, fraction, negative := scanDecimal(s, 1<<47)
+	if intPart > 1<<47 {
+		saturationEvents.Add(1)
+		if negative {
+			return Q48{raw: q48RawMin}
+		}
+		return Q48{raw: q48RawMax}
+	}
+	raw := intPart<<16 + decimalFraction(fraction, 16)
+	if negative {
+		if raw > 1<<63 {
+			saturationEvents.Add(1)
+			return Q48{raw: q48RawMin}
+		}
+		return Q48{raw: -int64(raw)} // A magnitude of 1<<63 converts to MinValue.
+	}
+	if raw > q48RawMax {
+		saturationEvents.Add(1)
+		return Q48{raw: q48RawMax}
+	}
+	return Q48{raw: int64(raw)}
+}
+
 // String returns the exact canonical decimal form of q, such as "-6.25".
 // For every q, MustParse(q.String()) == q. Use Raw for the exact bit pattern.
-func (q Q32) String() string {
-	n := magnitude(q.raw)
-	intPart := n >> 32
-	fraction := n & (q32RawOne - 1)
+func (q Q32) String() string { return formatFixed(q.raw, 32) }
+
+// String returns the exact canonical decimal form of q.
+// For every q, Q48MustParse(q.String()) == q. Use Raw for the exact bit pattern.
+func (q Q48) String() string { return formatFixed(q.raw, 16) }
+
+// formatFixed writes a signed raw value with fractionBits bits of fraction.
+func formatFixed(raw int64, fractionBits uint) string {
+	n := magnitude(raw)
+	mask := uint64(1)<<fractionBits - 1
+	intPart := n >> fractionBits
+	fraction := n & mask
 
 	var buf []byte
-	if q.raw < 0 {
+	if raw < 0 {
 		buf = append(buf, '-')
 	}
-	var digits [10]byte
+	var digits [20]byte
 	i := len(digits)
 	for {
 		i--
@@ -67,11 +102,11 @@ func (q Q32) String() string {
 	buf = append(buf, digits[i:]...)
 	if fraction != 0 {
 		buf = append(buf, '.')
-		// A Q32.32 fraction has at most 32 decimal digits.
+		// A fraction of b bits has at most b decimal digits.
 		for fraction != 0 {
 			fraction *= 10
-			buf = append(buf, byte('0'+fraction>>32))
-			fraction &= q32RawOne - 1
+			buf = append(buf, byte('0'+fraction>>fractionBits))
+			fraction &= mask
 		}
 	}
 	return string(buf)

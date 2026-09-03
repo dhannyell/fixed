@@ -9,6 +9,7 @@ import (
 
 var benchSinkQ32 int64
 var benchSinkQ16 int64
+var benchSinkQ48 int64
 
 // BenchmarkSinCosTurns uses a non-sequential step to exercise table access.
 func BenchmarkSinCosTurns(b *testing.B) {
@@ -374,4 +375,111 @@ func BenchmarkRotMulLatency(b *testing.B) {
 		r = r.Mul(step)
 	}
 	benchSinkQ32 = r.Sin.Raw() + r.Cos.Raw()
+}
+
+func BenchmarkQ48AddThroughput(b *testing.B) {
+	step := fixed.Q48FromRaw(1)
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.Q48FromRaw(u).Add(step).Raw()
+		u += 2654435761
+	}
+	benchSinkQ48 = acc
+}
+
+func BenchmarkQ48AddLatency(b *testing.B) {
+	step := fixed.Q48FromRaw(1)
+	x := fixed.Q48Zero()
+	for range b.N {
+		x = x.Add(step)
+	}
+	benchSinkQ48 = x.Raw()
+}
+
+func BenchmarkQ48MulThroughput(b *testing.B) {
+	factor := fixed.Q48FromRatio(255, 256)
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.Q48FromRaw(u).Mul(factor).Raw()
+		u += 2654435761
+	}
+	benchSinkQ48 = acc
+}
+
+func BenchmarkQ48MulLatency(b *testing.B) {
+	factor := fixed.Q48FromRatio(255, 256)
+	one := fixed.Q48One()
+	x := fixed.Q48FromInt(3)
+	for range b.N {
+		x = x.Mul(factor).Add(one)
+	}
+	benchSinkQ48 = x.Raw()
+}
+
+func BenchmarkQ48MulAdd16Throughput(b *testing.B) {
+	factor := fixed.Q16FromRatio(255, 256)
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.Q48Zero().MulAdd16(fixed.Q16FromRaw(int32(u)), factor).Raw()
+		u += 2654435761
+	}
+	benchSinkQ48 = acc
+}
+
+func BenchmarkQ48MulAdd16Latency(b *testing.B) {
+	// The accumulator chain is the dot-product pattern the format serves.
+	// The varying operand keeps the product inside the loop.
+	factor := fixed.Q16FromInt(128)
+	acc := fixed.Q48Zero()
+	u := int64(0)
+	for range b.N {
+		acc = acc.MulAdd16(fixed.Q16FromRaw(int32(u)&0xFFFF), factor)
+		u += 2654435761
+	}
+	benchSinkQ48 = acc.Raw()
+}
+
+func BenchmarkQ48DivThroughput(b *testing.B) {
+	divisor := fixed.Q48FromInt(3)
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.Q48FromRaw(u).Div(divisor).Raw()
+		u += 2654435761
+	}
+	benchSinkQ48 = acc
+}
+
+func BenchmarkQ48DivLatency(b *testing.B) {
+	divisor := fixed.Q48FromRatio(3, 2)
+	one := fixed.Q48One()
+	x := fixed.Q48FromInt(3)
+	for range b.N {
+		x = x.Div(divisor).Add(one)
+	}
+	benchSinkQ48 = x.Raw()
+}
+
+func BenchmarkQ48SqrtThroughput(b *testing.B) {
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += fixed.Q48FromRaw(u & math.MaxInt64).Sqrt().Raw()
+		u += 2654435761
+	}
+	benchSinkQ48 = acc
+}
+
+func BenchmarkQ48SqrtLatency(b *testing.B) {
+	scale := fixed.Q48FromInt(1000)
+	x := fixed.Q48FromInt(1_000_000)
+	u := int64(0)
+	for range b.N {
+		x = x.Sqrt().Mul(scale).Add(fixed.Q48FromRaw(u & 0xFFFF))
+		u += 2654435761
+	}
+	benchSinkQ48 = x.Raw()
 }
