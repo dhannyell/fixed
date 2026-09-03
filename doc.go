@@ -101,6 +101,8 @@
 // [Rot] stores a rotation as its sine and cosine. The zero Rot is invalid. Use
 // [RotIdentity] or [RotFromTurns] to construct a rotation. Repeated composition
 // can introduce rounding drift; [Rot.Normalize] restores unit length.
+// [Rot.Inv] is the conjugate and is an inverse for a unit rotation;
+// [Rot.InvNormalized] normalizes first when drift may be present.
 //
 // # Batch operations
 //
@@ -112,10 +114,18 @@
 // [BatchQ32FromQ16] and [BatchQ16FromQ32] move whole slices across the format
 // boundary and follow the conversion rules of [Q16.ToQ32] and [Q32.ToQ16].
 //
+// [BatchDot16] sums Q16 products into one Q48 in a fixed order: element i
+// joins partial sum i mod 8, and the eight partials reduce as a balanced
+// tree. Without saturation this equals a loop over [Q48.MulAdd16]; with
+// saturation the order decides the bits, so every kernel keeps it.
+// [BatchQ48Mul16] scales a Q48 slice by a Q16 slice with the rules of
+// [Q48.Mul16].
+//
 // Every build runs the scalar kernels. A build with GOEXPERIMENT=simd on Go
 // 1.27 or later selects vector kernels at package initialization on amd64 with
-// AVX2 and on arm64. [BatchPath] reports the active family. The selection
-// changes speed, never bits.
+// AVX2 and on arm64. On arm64 only the Q16 functions have vector kernels;
+// [BatchDot16] and [BatchQ48Mul16] stay scalar there. [BatchPath] reports the
+// active family. The selection changes speed, never bits.
 //
 // # Compatibility contract
 //

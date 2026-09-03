@@ -84,6 +84,6 @@ jobs:
         run: go test -count=1 ./...
       - name: Fuzz smoke
         run: |
-          for target in FuzzBatchAdd16VsScalar FuzzBatchMul16VsScalar FuzzBatchQ16FromQ32VsScalar; do
+          for target in FuzzBatchAdd16VsScalar FuzzBatchMul16VsScalar FuzzBatchQ16FromQ32VsScalar FuzzBatchDot16VsScalar FuzzBatchQ48Mul16VsScalar; do
             go test -run '^$' -fuzz "^${target}\$" -fuzztime 20s . || exit 1
           done

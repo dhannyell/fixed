@@ -75,6 +75,7 @@ All formats use the same explicit rule for each operation:
 | `Sqrt` | Square root floored to the selected format |
 | `Round`, `MustParse` | Nearest representable value; exact halves round away from zero |
 | `Q48.MulAdd16` | Exact `Q16` product floored to Q48.16, then added with saturation on overflow |
+| `Q48.Mul16` | `Q48` times `Q16`, floored to Q48.16 with saturation on overflow; same bits as `Mul` on the widened factor |
 | `Q16.ToQ32`, `Q16.ToQ48` | Exact; the grid gets finer and the range gets wider |
 | `Q32.ToQ16` | Floored to the coarser grid, with saturation outside the narrower range |
 | `Q32.ToQ48` | Floored to the coarser grid; the range gets wider, so no saturation |
@@ -186,12 +187,24 @@ number.
 | `BatchClamp16` | 1.30 | 1.06 | 0.16 |
 | `BatchQ32FromQ16` | 0.50 | 0.38 | 0.27 |
 | `BatchQ16FromQ32` | 0.75 | 0.42 | 0.38 |
+| `BatchDot16` | 1.18 | 1.40 | 0.57 |
+| `BatchQ48Mul16` | 1.51 | 1.48 | 0.73 |
 
-In these measurements, every scalar batch function was faster than its
+In these measurements, every scalar `Q16` batch function was faster than its
 hand-written loop. The default build therefore had no batch abstraction penalty
-for this workload. arm64 has a NEON path for all six. Its numbers are not
+for this workload. `BatchDot16` is the exception: its scalar kernel keeps eight
+partial sums so that every path shares one order, and that costs more than a
+serial loop when nothing saturates. The `per-call loop` for `BatchDot16` is a
+serial `Q48.MulAdd16` accumulator; for `BatchQ48Mul16` it is `Q48.Mul16`.
+
+arm64 has a NEON path for the six `Q16` functions. Its numbers are not
 published here because only shared CI runners have measured it, and a shared
-runner cannot support the comparison above.
+runner cannot support the comparison above. The two `Q48` functions stay
+scalar on arm64. NEON has two 64-bit lanes per register and no 64-bit
+multiply, and the measured candidates stayed under the 2.0x gain that a vector
+kernel must show over the scalar batch. On a shared arm64 runner the scalar
+`BatchDot16` was still 2.2x faster than the serial `Q48.MulAdd16` loop. SVE
+may change this; it is not in `simd/archsimd` yet.
 
 Two portability notes. `Div` costs more on arm64, because the 128-bit
 division is a software routine there. `Sqrt` does not divide on any
@@ -216,7 +229,10 @@ reduction through an approximation of pi.
 interpolation. Their maximum absolute error is 2⁻²⁰. `Rot` stores a rotation as
 its sine and cosine, which makes application, composition, and inversion
 available without another trigonometric lookup. The zero value of `Rot` is not
-a valid rotation; start with `RotIdentity` or `RotFromTurns`.
+a valid rotation; start with `RotIdentity` or `RotFromTurns`. `Rot.Inv` is the
+conjugate and is an inverse when the rotation has unit length. Use
+`Rot.InvNormalized` after accumulated rounding drift when normalization is
+required as part of the operation.
 
 ## Batch operations
 
@@ -229,10 +245,19 @@ conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number
 of saturated elements to the saturation counter in one update, so
 `SaturationCount` reports the same total as a loop over the scalar methods.
 
+`BatchDot16` sums `Q16` products into one `Q48`. Its order is fixed: element
+`i` joins partial sum `i mod 8`, and the eight partials reduce as a balanced
+tree. Without saturation this equals a loop over `Q48.MulAdd16`. With
+saturation the order decides the bits, so every kernel keeps it, and the result
+is the same on every host. `BatchQ48Mul16` scales a `Q48` slice by a `Q16`
+slice with the rules of `Q48.Mul16`.
+
 Every build runs the scalar kernels. Building with `GOEXPERIMENT=simd` on Go
 1.27 or later selects vector kernels at package initialization: AVX2 on amd64
 when the CPU reports it, and NEON on arm64. `BatchPath` returns `"scalar"`,
-`"avx2"`, or `"neon"` so a program can report which family it got.
+`"avx2"`, or `"neon"` so a program can report which family it got. The
+`"neon"` family covers the `Q16` functions only; `BatchDot16` and
+`BatchQ48Mul16` run their scalar kernels on arm64 in every build.
 
 ```sh
 GOEXPERIMENT=simd go build ./...
@@ -279,6 +304,16 @@ Run the standard checks before submitting a change:
 go test ./...
 go vet ./...
 golangci-lint run ./...
+```
+
+The batch benchmarks separate steady-state throughput from edge cases. Use
+`BenchmarkBatchBoundaries` to inspect empty calls, vector-width crossings, and
+scalar tails. `BenchmarkBatchSaturation` compares workloads with no
+saturation, sparse saturation, and saturation in every element:
+
+```sh
+go test -run '^$' -bench '^BenchmarkBatch$' -benchmem ./...
+go test -run '^$' -bench '^BenchmarkBatch(Boundaries|Saturation)$' -benchmem ./...
 ```
 
 See the [package documentation](https://pkg.go.dev/github.com/dhannyell/fixed)

@@ -17,6 +17,10 @@ func selectKernels() batchKernels {
 		clamp:      clamp16NEON,
 		q32FromQ16: q32FromQ16NEON,
 		q16FromQ32: q16FromQ32NEON,
+		// The Q48 kernels stay scalar: with two 64-bit lanes and no 64-bit
+		// multiply, the measured NEON candidates fell short of the 2.0x gate.
+		dot16:    dot16Scalar,
+		q48Mul16: q48Mul16Scalar,
 	}
 }
 

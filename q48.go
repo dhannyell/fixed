@@ -106,6 +106,23 @@ func (q Q48) MulAdd16(a, b Q16) Q48 {
 	return q.Add(Q48{raw: (int64(a.raw) * int64(b.raw)) >> 16})
 }
 
+// Mul16 returns q*f for a Q16 factor. It floors the product to Q48.16 and
+// saturates on overflow; the bits equal q.Mul(f.ToQ48()). The sign
+// corrections are branch-free so the method stays inside the inlining budget.
+func (q Q48) Mul16(f Q16) Q48 {
+	o := int64(f.raw)
+	hi, lo := bits.Mul64(uint64(q.raw), uint64(o))
+	hi -= uint64(o) & uint64(q.raw>>63)
+	hi -= uint64(q.raw) & uint64(o>>63)
+	// The result fits when bits 63..79 of the product agree, and they are
+	// bits 15..31 of hi.
+	if uint64(int64(hi)>>15+1) > 1 {
+		saturationEvents.Add(1)
+		return Q48{raw: q48RawMax ^ (int64(hi) >> 63)}
+	}
+	return Q48{raw: int64(hi<<48 | lo>>16)}
+}
+
 // Div returns q/o truncated toward zero. It saturates on overflow.
 // It panics when o is zero.
 func (q Q48) Div(o Q48) Q48 {
@@ -122,7 +139,7 @@ func (q Q48) Sqrt() Q48 {
 		panic("fixed: square root of a negative value")
 	}
 	// The 80-bit radicand has a root of at most 40 bits.
-	return Q48{raw: int64(isqrt128(uint64(q.raw)>>48, uint64(q.raw)<<16))}
+	return Q48{raw: isqrtQ48(q.raw)}
 }
 
 // Neg returns -q. Neg of MinValue saturates to MaxValue.

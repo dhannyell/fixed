@@ -20,6 +20,8 @@ func selectKernels() batchKernels {
 		clamp:      clamp16Scalar,
 		q32FromQ16: q32FromQ16Scalar,
 		q16FromQ32: q16FromQ32Scalar,
+		dot16:      dot16Scalar,
+		q48Mul16:   q48Mul16Scalar,
 	}
 	// Add future AVX-512 tiers before this branch and guard them with
 	// archsimd.X86.AVX512().
@@ -31,6 +33,8 @@ func selectKernels() batchKernels {
 		k.clamp = clamp16AVX2
 		k.q32FromQ16 = q32FromQ16AVX2
 		k.q16FromQ32 = q16FromQ32AVX2
+		k.dot16 = dot16AVX2
+		k.q48Mul16 = q48Mul16AVX2
 	}
 	return k
 }

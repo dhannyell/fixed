@@ -25,7 +25,12 @@ jobs:
           - FuzzQ16MulVsWidened
           - FuzzQ16TextRoundTrip
           - FuzzQ48MulAdd16VsWidened
+          - FuzzQ48MulVsBig
+          - FuzzQ48DivVsBig
+          - FuzzQ48SqrtVsBig
           - FuzzQ48TextRoundTrip
+          - FuzzBatchDot16VsScalar
+          - FuzzBatchQ48Mul16VsScalar
           - FuzzSinCosPythagoras
           - FuzzAtan2SinCosRoundTrip
     steps:

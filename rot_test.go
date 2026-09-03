@@ -72,6 +72,28 @@ func TestRotInvComposesToIdentity(t *testing.T) {
 	}
 }
 
+func TestRotInvNormalized(t *testing.T) {
+	cases := []fixed.Rot{
+		{Sin: fixed.Q32FromInt(3), Cos: fixed.Q32FromInt(4)},
+		fixed.RotFromTurns(fixed.Q32FromRatio(1, 7)).Mul(fixed.RotFromTurns(fixed.Q32FromRatio(2, 9))),
+		{},
+	}
+	for _, r := range cases {
+		got := r.InvNormalized()
+		want := r.Normalize().Inv()
+		if got != want {
+			t.Fatalf("InvNormalized(%v) = %v, Normalize().Inv() = %v", r, got, want)
+		}
+		identity := r.Normalize().Mul(got)
+		if d := identity.Sin.Abs().Raw(); d > 4 {
+			t.Errorf("normalized inverse sine is %d raw units from zero", d)
+		}
+		if d := identity.Cos.Sub(fixed.Q32One()).Abs().Raw(); d > 4 {
+			t.Errorf("normalized inverse cosine is %d raw units from one", d)
+		}
+	}
+}
+
 func TestRotNormalize(t *testing.T) {
 	step := fixed.RotFromTurns(fixed.Q32FromRatio(1, 100))
 	r := fixed.RotIdentity()

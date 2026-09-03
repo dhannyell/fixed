@@ -12,6 +12,11 @@ var benchSinkBatch int64
 // a run that must stream from memory.
 var benchSizes = []int{64, 1024, 65536}
 
+// benchBoundarySizes exposes call overhead, vector-width crossings and scalar
+// tails. Keep it separate from benchSizes so the published throughput matrix
+// remains compact.
+var benchBoundarySizes = []int{0, 1, 3, 4, 7, 8, 9, 15, 16, 31, 32, 63, 64}
+
 // benchInputs builds deterministic, non-saturating operands for hot-path
 // measurements. Saturating workloads need separate measurements.
 func benchInputs(n int) (a, b []Q16) {
@@ -31,6 +36,18 @@ func benchInputs(n int) (a, b []Q16) {
 func drain(dst []Q16) {
 	if len(dst) != 0 {
 		benchSinkBatch += int64(dst[0].raw) + int64(dst[len(dst)-1].raw)
+	}
+}
+
+func drainQ32(dst []Q32) {
+	if len(dst) != 0 {
+		benchSinkBatch += dst[0].raw + dst[len(dst)-1].raw
+	}
+}
+
+func drainQ48(dst []Q48) {
+	if len(dst) != 0 {
+		benchSinkBatch += dst[0].raw + dst[len(dst)-1].raw
 	}
 }
 
@@ -55,7 +72,15 @@ func runBatch(b *testing.B, op, impl string, n int, run func()) {
 }
 
 func BenchmarkBatch(b *testing.B) {
-	for _, n := range benchSizes {
+	benchmarkBatchSizes(b, benchSizes)
+}
+
+func BenchmarkBatchBoundaries(b *testing.B) {
+	benchmarkBatchSizes(b, benchBoundarySizes)
+}
+
+func benchmarkBatchSizes(b *testing.B, sizes []int) {
+	for _, n := range sizes {
 		a, y := benchInputs(n)
 		dst := make([]Q16, n)
 
@@ -128,6 +153,7 @@ func BenchmarkBatch(b *testing.B) {
 		}
 
 		benchmarkConversions(b, n, a, dst)
+		benchmarkBatch48(b, n, a, y)
 	}
 }
 
@@ -146,7 +172,7 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 			for i := range a {
 				wideDst[i] = a[i].ToQ32()
 			}
-			benchSinkBatch += wideDst[n-1].raw
+			drainQ32(wideDst)
 		}
 	})
 	for _, k := range widenKernels {
@@ -157,7 +183,7 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 				b.SetBytes(int64(n) * 12)
 				for range b.N {
 					BatchQ32FromQ16(wideDst, a)
-					benchSinkBatch += wideDst[n-1].raw
+					drainQ32(wideDst)
 				}
 			})
 		})
@@ -183,6 +209,146 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 					drain(dst)
 				}
 			})
+		})
+	}
+}
+
+// benchmarkBatch48 measures the Q48 batch functions. dot16 has no store;
+// q48mul16 reads a Q48 and a Q16 and writes a Q48 per element.
+func benchmarkBatch48(b *testing.B, n int, a, y []Q16) {
+	var sink int64
+	runBatch(b, "dot16", "percall", n, func() {
+		var d Q48
+		for i := range a {
+			d = d.MulAdd16(a[i], y[i])
+		}
+		sink += d.raw
+	})
+	for _, k := range dot16Kernels {
+		table := kernels
+		table.dot16 = k.fn
+		withKernels(table, func() {
+			runBatch(b, "dot16", k.name, n, func() {
+				sink += BatchDot16(a, y).raw
+			})
+		})
+	}
+
+	q, f := benchMul16Inputs(n)
+	prod := make([]Q48, n)
+	runBatch(b, "q48mul16", "percall", n, func() {
+		for i := range q {
+			prod[i] = q[i].Mul16(f[i])
+		}
+		if len(prod) != 0 {
+			sink += prod[len(prod)-1].raw
+		}
+	})
+	for _, k := range q48Mul16Kernels {
+		table := kernels
+		table.q48Mul16 = k.fn
+		withKernels(table, func() {
+			runBatch(b, "q48mul16", k.name, n, func() {
+				BatchQ48Mul16(prod, q, f)
+				if len(prod) != 0 {
+					sink += prod[len(prod)-1].raw
+				}
+			})
+		})
+	}
+	benchSinkBatch += sink
+}
+
+func runSaturationBatch(b *testing.B, op, density, impl string, n, bytesPerElement int, run func()) {
+	b.Run("op="+op+"/density="+density+"/impl="+impl+"/n="+strconv.Itoa(n), func(b *testing.B) {
+		b.SetBytes(int64(n) * int64(bytesPerElement))
+		ResetSaturationCount()
+		b.ResetTimer()
+		for range b.N {
+			run()
+		}
+		b.StopTimer()
+		ResetSaturationCount()
+	})
+}
+
+// BenchmarkBatchSaturation measures the cost of the saturation contract. The
+// sparse case saturates one element per sixteen; the all case saturates every
+// element. In particular, it shows the difference between one atomic update
+// per scalar operation and the batch wrappers' one update per call.
+func BenchmarkBatchSaturation(b *testing.B) {
+	const n = 1024
+	for _, density := range []struct {
+		name  string
+		every int
+	}{
+		{"none", 0},
+		{"sparse", 16},
+		{"all", 1},
+	} {
+		a, addend := make([]Q16, n), make([]Q16, n)
+		m, factor := make([]Q16, n), make([]Q16, n)
+		wide := make([]Q32, n)
+		q, qFactor := make([]Q48, n), make([]Q16, n)
+		for i := range n {
+			a[i], addend[i] = Q16One(), Q16One()
+			m[i], factor[i] = Q16One(), Q16Half()
+			wide[i] = Q16One().ToQ32()
+			q[i], qFactor[i] = Q48One(), Q16Half()
+		}
+		if density.every != 0 {
+			for i := 0; i < n; i += density.every {
+				a[i], addend[i] = Q16MaxValue(), Q16One()
+				m[i], factor[i] = Q16MinValue(), Q16MinValue()
+				wide[i] = Q32MaxValue()
+				q[i], qFactor[i] = Q48MaxValue(), Q16FromInt(2)
+			}
+		}
+
+		dst16 := make([]Q16, n)
+		runSaturationBatch(b, "add", density.name, "percall", n, 4, func() {
+			for i := range n {
+				dst16[i] = a[i].Add(addend[i])
+			}
+			drain(dst16)
+		})
+		runSaturationBatch(b, "add", density.name, "batch", n, 4, func() {
+			BatchAdd16(dst16, a, addend)
+			drain(dst16)
+		})
+
+		runSaturationBatch(b, "mul", density.name, "percall", n, 4, func() {
+			for i := range n {
+				dst16[i] = m[i].Mul(factor[i])
+			}
+			drain(dst16)
+		})
+		runSaturationBatch(b, "mul", density.name, "batch", n, 4, func() {
+			BatchMul16(dst16, m, factor)
+			drain(dst16)
+		})
+
+		runSaturationBatch(b, "q16fromq32", density.name, "percall", n, 12, func() {
+			for i := range n {
+				dst16[i] = wide[i].ToQ16()
+			}
+			drain(dst16)
+		})
+		runSaturationBatch(b, "q16fromq32", density.name, "batch", n, 12, func() {
+			BatchQ16FromQ32(dst16, wide)
+			drain(dst16)
+		})
+
+		dst48 := make([]Q48, n)
+		runSaturationBatch(b, "q48mul16", density.name, "percall", n, 12, func() {
+			for i := range n {
+				dst48[i] = q[i].Mul16(qFactor[i])
+			}
+			drainQ48(dst48)
+		})
+		runSaturationBatch(b, "q48mul16", density.name, "batch", n, 12, func() {
+			BatchQ48Mul16(dst48, q, qFactor)
+			drainQ48(dst48)
 		})
 	}
 }
