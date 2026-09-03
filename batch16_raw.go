@@ -8,7 +8,7 @@ import "unsafe"
 // need the raw words of a Q16 or Q32 slice, because archsimd loads from
 // []int32 and []int64; a copy would cost more than the kernel saves.
 
-// Q16 is struct{raw int32} and Q32 is struct{raw int64}, so each slice already
+// Q16 is struct{raw int32}; Q32 and Q48 are struct{raw int64}. Each slice already
 // has the layout required by the kernels. The paired uintptr differences fail
 // to compile if either size changes. A one-field struct has its field's
 // alignment, so equal sizes leave no other layout difference.
@@ -17,12 +17,19 @@ const (
 	_ = unsafe.Sizeof(int32(0)) - unsafe.Sizeof(Q16{})
 	_ = unsafe.Sizeof(Q32{}) - unsafe.Sizeof(int64(0))
 	_ = unsafe.Sizeof(int64(0)) - unsafe.Sizeof(Q32{})
+	_ = unsafe.Sizeof(Q48{}) - unsafe.Sizeof(int64(0))
+	_ = unsafe.Sizeof(int64(0)) - unsafe.Sizeof(Q48{})
 )
 
 // rawInt32 reinterprets a Q16 slice as int32. It borrows the caller's backing
 // array, so the result stays valid exactly as long as the argument does.
 func rawInt32(s []Q16) []int32 {
 	return unsafe.Slice((*int32)(unsafe.Pointer(unsafe.SliceData(s))), len(s))
+}
+
+// rawInt64Q48 reinterprets a Q48 slice as int64, under the same borrowing rule.
+func rawInt64Q48(s []Q48) []int64 {
+	return unsafe.Slice((*int64)(unsafe.Pointer(unsafe.SliceData(s))), len(s))
 }
 
 // rawInt64 reinterprets a Q32 slice as int64. It borrows the caller's backing

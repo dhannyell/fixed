@@ -128,6 +128,7 @@ func BenchmarkBatch(b *testing.B) {
 		}
 
 		benchmarkConversions(b, n, a, dst)
+		benchmarkBatch48(b, n, a, y)
 	}
 }
 
@@ -185,4 +186,46 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 			})
 		})
 	}
+}
+
+// benchmarkBatch48 measures the Q48 batch functions. dot16 has no store;
+// q48mul16 reads a Q48 and a Q16 and writes a Q48 per element.
+func benchmarkBatch48(b *testing.B, n int, a, y []Q16) {
+	var sink int64
+	runBatch(b, "dot16", "percall", n, func() {
+		var d Q48
+		for i := range a {
+			d = d.MulAdd16(a[i], y[i])
+		}
+		sink += d.raw
+	})
+	for _, k := range dot16Kernels {
+		table := kernels
+		table.dot16 = k.fn
+		withKernels(table, func() {
+			runBatch(b, "dot16", k.name, n, func() {
+				sink += BatchDot16(a, y).raw
+			})
+		})
+	}
+
+	q, f := benchMul16Inputs(n)
+	prod := make([]Q48, n)
+	runBatch(b, "q48mul16", "percall", n, func() {
+		for i := range q {
+			prod[i] = q[i].Mul16(f[i])
+		}
+		sink += prod[n-1].raw
+	})
+	for _, k := range q48Mul16Kernels {
+		table := kernels
+		table.q48Mul16 = k.fn
+		withKernels(table, func() {
+			runBatch(b, "q48mul16", k.name, n, func() {
+				BatchQ48Mul16(prod, q, f)
+				sink += prod[n-1].raw
+			})
+		})
+	}
+	benchSinkBatch += sink
 }
