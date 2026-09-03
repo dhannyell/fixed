@@ -27,13 +27,14 @@ jobs:
           grep -m1 -E 'model name|CPU part|Features' /proc/cpuinfo || true
           lscpu | grep -iE 'model|vendor|flags' || true
       - name: Parity
-        run: go test -count=1 -run 'Batch|Probe48' -v . | grep -E '^(=== RUN|--- |ok|FAIL|PASS)'
+        run: set -o pipefail; go test -count=1 -run 'Batch|Probe48' -v . | grep -E '^(--- |ok|FAIL|PASS)'
       - name: Bench session 1
-        run: go test -run '^$' -bench '^Benchmark(Batch/op=(dot16|q48mul16)|Probe48/op=mulacc)' -benchtime=300ms -count=10 . | tee s1.txt
+        run: go test -run '^$' -bench '^Benchmark(Batch|Probe48)/op=(dot16|q48mul16|mulacc)$' -benchtime=300ms -count=10 . | tee s1.txt
       - name: Bench session 2
-        run: go test -run '^$' -bench '^Benchmark(Batch/op=(dot16|q48mul16)|Probe48/op=mulacc)' -benchtime=300ms -count=10 . | tee s2.txt
+        run: go test -run '^$' -bench '^Benchmark(Batch|Probe48)/op=(dot16|q48mul16|mulacc)$' -benchtime=300ms -count=10 . | tee s2.txt
       - name: Stability and table
         run: |
+          grep -q ns/op s1.txt && grep -q ns/op s2.txt
           {
             echo '## Session stability'
             echo '```'
