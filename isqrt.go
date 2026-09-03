@@ -31,6 +31,25 @@ func isqrt64(n uint64) uint64 {
 	return x
 }
 
+// isqrtQ16 returns floor(sqrt(raw*2^16)) for a non-negative Q16 raw value.
+// The 47-bit radicand and its 24-bit root fit in one machine word. The
+// floating-point root is only a seed; integer products decide the result.
+func isqrtQ16(raw int32) int32 {
+	n := uint64(raw) << 16
+	x := uint64(math.Sqrt(float64(n)))
+	for x*x > n {
+		x--
+	}
+	for {
+		y := x + 1
+		if y*y > n {
+			break
+		}
+		x = y
+	}
+	return int32(x)
+}
+
 // isqrtQ32 returns floor(sqrt(raw*2^32)) for a non-negative Q32 raw value.
 // The floating-point root is only a seed; integer products decide the result.
 func isqrtQ32(raw int64) int64 {

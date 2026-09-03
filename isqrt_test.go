@@ -172,6 +172,11 @@ func TestSpecializedSqrtMatchesIsqrt128(t *testing.T) {
 	}
 	check := func(raw uint64) {
 		t.Helper()
+		if raw <= uint64(q16RawMax) {
+			if got, want := isqrtQ16(int32(raw)), int32(isqrt128(0, raw<<16)); got != want {
+				t.Fatalf("isqrtQ16(%#x) = %d, isqrt128 says %d", raw, got, want)
+			}
+		}
 		if got, want := isqrtQ32(int64(raw)), int64(isqrt128(raw>>32, raw<<32)); got != want {
 			t.Fatalf("isqrtQ32(%#x) = %d, isqrt128 says %d", raw, got, want)
 		}
@@ -185,6 +190,10 @@ func TestSpecializedSqrtMatchesIsqrt128(t *testing.T) {
 	state := uint64(7)
 	for range 1_000_000 {
 		check(splitmix64(&state) >> 1)
+		raw16 := splitmix64(&state) & uint64(q16RawMax)
+		if got, want := isqrtQ16(int32(raw16)), int32(isqrt128(0, raw16<<16)); got != want {
+			t.Fatalf("isqrtQ16(%#x) = %d, isqrt128 says %d", raw16, got, want)
+		}
 	}
 }
 

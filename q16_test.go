@@ -252,3 +252,19 @@ func FuzzQ16MulVsWidened(f *testing.F) {
 		}
 	})
 }
+
+func FuzzQ16SqrtVsBig(f *testing.F) {
+	for _, raw := range q16BoundaryRaws() {
+		if raw >= 0 {
+			f.Add(raw)
+		}
+	}
+	f.Fuzz(func(t *testing.T, raw int32) {
+		if raw < 0 {
+			t.Skip()
+		}
+		if got, want := fixed.Q16FromRaw(raw).Sqrt().Raw(), oracleQ16Sqrt(raw); got != want {
+			t.Errorf("Sqrt(%d) = %d, oracle says %d", raw, got, want)
+		}
+	})
+}

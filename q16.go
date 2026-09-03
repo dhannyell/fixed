@@ -104,7 +104,7 @@ func (q Q16) Sqrt() Q16 {
 		panic("fixed: square root of a negative value")
 	}
 	// The 47-bit radicand has a root of at most 24 bits.
-	return Q16{raw: int32(isqrt128(0, uint64(q.raw)<<16))}
+	return Q16{raw: isqrtQ16(q.raw)}
 }
 
 // Neg returns -q. Neg of the minimum saturates to the maximum.
