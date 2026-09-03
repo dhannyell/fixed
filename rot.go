@@ -37,10 +37,17 @@ func (r Rot) Mul(o Rot) Rot {
 	}
 }
 
-// Inv returns the inverse rotation. For a unit rotation the inverse is
-// the conjugate, so no division is needed.
+// Inv returns the conjugate of r. It is the inverse when r has unit length.
+// Use InvNormalized when accumulated rounding drift may have changed the
+// length.
 func (r Rot) Inv() Rot {
 	return Rot{Sin: r.Sin.Neg(), Cos: r.Cos}
+}
+
+// InvNormalized normalizes r and returns its inverse. A zero r returns the
+// identity, following Normalize.
+func (r Rot) InvNormalized() Rot {
+	return r.Normalize().Inv()
 }
 
 // Normalize rescales r to unit length. A zero r returns the identity.

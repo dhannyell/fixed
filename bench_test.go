@@ -136,6 +136,29 @@ func BenchmarkQ32SqrtLatency(b *testing.B) {
 	benchSinkQ32 = x.Raw()
 }
 
+func BenchmarkQ32SqrtFractionThroughput(b *testing.B) {
+	var values [256]fixed.Q32
+	var state uint32 = 1
+	for i := range values {
+		state = state*1664525 + 1013904223
+		values[i] = fixed.Q32FromRaw(int64(state))
+	}
+	var acc int64
+	for i := range b.N {
+		acc += values[i&255].Sqrt().Raw()
+	}
+	benchSinkQ32 = acc
+}
+
+func BenchmarkQ32SqrtFractionLatency(b *testing.B) {
+	x := fixed.Q32Half()
+	quarter := fixed.Q32FromRatio(1, 4)
+	for range b.N {
+		x = x.Sqrt().Mul(fixed.Q32Half()).Add(quarter)
+	}
+	benchSinkQ32 = x.Raw()
+}
+
 func BenchmarkQ16AddThroughput(b *testing.B) {
 	step := fixed.Q16FromRaw(1)
 	var acc int64

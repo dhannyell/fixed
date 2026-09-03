@@ -384,6 +384,22 @@ func FuzzQ48DivVsBig(f *testing.F) {
 	})
 }
 
+func FuzzQ48SqrtVsBig(f *testing.F) {
+	for _, raw := range fuzzSeeds() {
+		if raw >= 0 {
+			f.Add(raw)
+		}
+	}
+	f.Fuzz(func(t *testing.T, raw int64) {
+		if raw < 0 {
+			t.Skip()
+		}
+		if got, want := fixed.Q48FromRaw(raw).Sqrt().Raw(), oracleQ48Sqrt(raw); got != want {
+			t.Errorf("Sqrt(%d) = %d, oracle says %d", raw, got, want)
+		}
+	})
+}
+
 func FuzzQ48TextRoundTrip(f *testing.F) {
 	for _, raw := range fuzzSeeds() {
 		f.Add(raw)

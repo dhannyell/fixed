@@ -162,6 +162,32 @@ func TestIsqrt64MatchesOracleAtBoundaries(t *testing.T) {
 	}
 }
 
+func TestSpecializedSqrtMatchesIsqrt128(t *testing.T) {
+	cases := []uint64{
+		0, 1, 2, 3,
+		1<<16 - 1, 1 << 16, 1<<16 + 1,
+		1<<32 - 1, 1 << 32, 1<<32 + 1,
+		1<<48 - 1, 1 << 48, 1<<48 + 1,
+		1<<63 - 1,
+	}
+	check := func(raw uint64) {
+		t.Helper()
+		if got, want := isqrtQ32(int64(raw)), int64(isqrt128(raw>>32, raw<<32)); got != want {
+			t.Fatalf("isqrtQ32(%#x) = %d, isqrt128 says %d", raw, got, want)
+		}
+		if got, want := isqrtQ48(int64(raw)), int64(isqrt128(raw>>48, raw<<16)); got != want {
+			t.Fatalf("isqrtQ48(%#x) = %d, isqrt128 says %d", raw, got, want)
+		}
+	}
+	for _, raw := range cases {
+		check(raw)
+	}
+	state := uint64(7)
+	for range 1_000_000 {
+		check(splitmix64(&state) >> 1)
+	}
+}
+
 // isqrtOperands mixes magnitudes seen by Sqrt (96-bit radicands) and by
 // hypotRaw (sums of squared components).
 func isqrtOperands() [256][2]uint64 {

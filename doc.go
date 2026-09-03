@@ -101,6 +101,8 @@
 // [Rot] stores a rotation as its sine and cosine. The zero Rot is invalid. Use
 // [RotIdentity] or [RotFromTurns] to construct a rotation. Repeated composition
 // can introduce rounding drift; [Rot.Normalize] restores unit length.
+// [Rot.Inv] is the conjugate and is an inverse for a unit rotation;
+// [Rot.InvNormalized] normalizes first when drift may be present.
 //
 // # Batch operations
 //

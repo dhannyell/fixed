@@ -229,7 +229,10 @@ reduction through an approximation of pi.
 interpolation. Their maximum absolute error is 2⁻²⁰. `Rot` stores a rotation as
 its sine and cosine, which makes application, composition, and inversion
 available without another trigonometric lookup. The zero value of `Rot` is not
-a valid rotation; start with `RotIdentity` or `RotFromTurns`.
+a valid rotation; start with `RotIdentity` or `RotFromTurns`. `Rot.Inv` is the
+conjugate and is an inverse when the rotation has unit length. Use
+`Rot.InvNormalized` after accumulated rounding drift when normalization is
+required as part of the operation.
 
 ## Batch operations
 
@@ -301,6 +304,16 @@ Run the standard checks before submitting a change:
 go test ./...
 go vet ./...
 golangci-lint run ./...
+```
+
+The batch benchmarks separate steady-state throughput from edge cases. Use
+`BenchmarkBatchBoundaries` to inspect empty calls, vector-width crossings, and
+scalar tails. `BenchmarkBatchSaturation` compares workloads with no
+saturation, sparse saturation, and saturation in every element:
+
+```sh
+go test -run '^$' -bench '^BenchmarkBatch$' -benchmem ./...
+go test -run '^$' -bench '^BenchmarkBatch(Boundaries|Saturation)$' -benchmem ./...
 ```
 
 See the [package documentation](https://pkg.go.dev/github.com/dhannyell/fixed)
