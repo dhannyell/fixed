@@ -23,6 +23,7 @@ jobs:
           - FuzzSqrtVsBig
           - FuzzTextRoundTrip
           - FuzzQ16MulVsWidened
+          - FuzzQ16SqrtVsBig
           - FuzzQ16TextRoundTrip
           - FuzzQ48MulAdd16VsWidened
           - FuzzQ48MulVsBig
