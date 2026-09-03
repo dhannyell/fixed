@@ -10,7 +10,7 @@ import "simd/archsimd"
 // measurement passes.
 
 func init() {
-	dot16Kernels = append(dot16Kernels, dot16Kernel{"neon", dot16NEON})
+	dot16Kernels = append(dot16Kernels, dot16Kernel{"neon", dot16NEON}, dot16Kernel{"neonflag", dot16NEONFlag})
 	q48Mul16Kernels = append(q48Mul16Kernels,
 		q48Mul16Kernel{"neon", q48Mul16NEON},
 		q48Mul16Kernel{"neongate", q48Mul16NEONGate})
@@ -63,6 +63,51 @@ func dot16NEON(a, b []Q16) (Q48, uint64) {
 	p2.Store(partial[4:6])
 	p3.Store(partial[6:8])
 	events := vecLaneSum64(count)
+	for j := i; j < len(a); j++ {
+		p := (int64(a[j].raw) * int64(b[j].raw)) >> 16
+		r, ovf := q48AddSat(partial[j%dot16Lanes], p)
+		if ovf {
+			events++
+		}
+		partial[j%dot16Lanes] = r
+	}
+	return dot16Reduce(partial, &events), events
+}
+
+// vecAddSatFlagNEON adds with saturation and folds the saturated lanes into
+// flag. The wrapped and saturated sums differ only in a saturated lane.
+func vecAddSatFlagNEON(x, y, flag archsimd.Int64x2) (archsimd.Int64x2, archsimd.Int64x2) {
+	s := x.AddSaturated(y)
+	return s, flag.Or(x.Add(y).Xor(s))
+}
+
+// dot16NEONFlag is dot16NEON without the per-block event count. It keeps
+// one flag vector and, when the flag is set, reruns the scalar kernel to
+// count the events. A run that never saturates never pays for counting.
+func dot16NEONFlag(a, b []Q16) (Q48, uint64) {
+	const lanes = 8
+	ra, rb := rawInt32(a), rawInt32(b)
+	zero := archsimd.BroadcastInt64x2(0)
+	p0, p1, p2, p3 := zero, zero, zero, zero
+	flag := zero
+	i := 0
+	for ; i+lanes <= len(ra); i += lanes {
+		lo, hi := vecProducts48NEON(archsimd.LoadInt32x4(ra[i:]), archsimd.LoadInt32x4(rb[i:]))
+		p0, flag = vecAddSatFlagNEON(p0, lo, flag)
+		p1, flag = vecAddSatFlagNEON(p1, hi, flag)
+		lo, hi = vecProducts48NEON(archsimd.LoadInt32x4(ra[i+4:]), archsimd.LoadInt32x4(rb[i+4:]))
+		p2, flag = vecAddSatFlagNEON(p2, lo, flag)
+		p3, flag = vecAddSatFlagNEON(p3, hi, flag)
+	}
+	if flag.GetElem(0)|flag.GetElem(1) != 0 {
+		return dot16Scalar(a, b)
+	}
+	var partial [dot16Lanes]int64
+	p0.Store(partial[0:2])
+	p1.Store(partial[2:4])
+	p2.Store(partial[4:6])
+	p3.Store(partial[6:8])
+	var events uint64
 	for j := i; j < len(a); j++ {
 		p := (int64(a[j].raw) * int64(b[j].raw)) >> 16
 		r, ovf := q48AddSat(partial[j%dot16Lanes], p)
