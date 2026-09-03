@@ -38,8 +38,9 @@ func batchLens2(dst, a int) {
 	}
 }
 
-// BatchPath reports the kernel family behind the batch functions on this
-// host: "scalar", "avx2" or "neon". Every path produces the same bits.
+// BatchPath reports the kernel family behind the Q16 batch functions on this
+// host: "scalar", "avx2" or "neon". The Q48 batch functions follow "avx2";
+// on "neon" they run their scalar kernels. Every path produces the same bits.
 func BatchPath() string { return kernels.path }
 
 // BatchAdd16 stores a[i]+b[i] into dst. Each element saturates on overflow.

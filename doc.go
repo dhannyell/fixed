@@ -121,8 +121,9 @@
 //
 // Every build runs the scalar kernels. A build with GOEXPERIMENT=simd on Go
 // 1.27 or later selects vector kernels at package initialization on amd64 with
-// AVX2 and on arm64. [BatchPath] reports the active family. The selection
-// changes speed, never bits.
+// AVX2 and on arm64. On arm64 only the Q16 functions have vector kernels;
+// [BatchDot16] and [BatchQ48Mul16] stay scalar there. [BatchPath] reports the
+// active family. The selection changes speed, never bits.
 //
 // # Compatibility contract
 //

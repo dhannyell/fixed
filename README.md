@@ -195,9 +195,16 @@ hand-written loop. The default build therefore had no batch abstraction penalty
 for this workload. `BatchDot16` is the exception: its scalar kernel keeps eight
 partial sums so that every path shares one order, and that costs more than a
 serial loop when nothing saturates. The `per-call loop` for `BatchDot16` is a
-serial `Q48.MulAdd16` accumulator; for `BatchQ48Mul16` it is `Q48.Mul16`. arm64 has a NEON path for the six `Q16` functions. Its numbers are not
+serial `Q48.MulAdd16` accumulator; for `BatchQ48Mul16` it is `Q48.Mul16`.
+
+arm64 has a NEON path for the six `Q16` functions. Its numbers are not
 published here because only shared CI runners have measured it, and a shared
-runner cannot support the comparison above.
+runner cannot support the comparison above. The two `Q48` functions stay
+scalar on arm64. NEON has two 64-bit lanes per register and no 64-bit
+multiply, and the measured candidates stayed under the 2.0x gain that a vector
+kernel must show over the scalar batch. On a shared arm64 runner the scalar
+`BatchDot16` was still 2.2x faster than the serial `Q48.MulAdd16` loop. SVE
+may change this; it is not in `simd/archsimd` yet.
 
 Two portability notes. `Div` costs more on arm64, because the 128-bit
 division is a software routine there. `Sqrt` does not divide on any
@@ -245,7 +252,9 @@ slice with the rules of `Q48.Mul16`.
 Every build runs the scalar kernels. Building with `GOEXPERIMENT=simd` on Go
 1.27 or later selects vector kernels at package initialization: AVX2 on amd64
 when the CPU reports it, and NEON on arm64. `BatchPath` returns `"scalar"`,
-`"avx2"`, or `"neon"` so a program can report which family it got.
+`"avx2"`, or `"neon"` so a program can report which family it got. The
+`"neon"` family covers the `Q16` functions only; `BatchDot16` and
+`BatchQ48Mul16` run their scalar kernels on arm64 in every build.
 
 ```sh
 GOEXPERIMENT=simd go build ./...
