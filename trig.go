@@ -18,7 +18,8 @@ func CosTurns(t Q32) Q32 {
 	return Q32{raw: sinFrac(uint32(t.raw) + 1<<30)}
 }
 
-// Atan2Turns returns the angle of (x, y) in (-1/2, 1/2] turns.
+// Atan2Turns returns the angle of (x, y) in [-1/2, 1/2] turns.
+// The negative x axis returns +1/2; quantization just below it can return -1/2.
 // Atan2Turns(Zero(), Zero()) returns Zero. It never panics or saturates.
 // The unit ratio is truncated to Q32.32, table entries round to nearest,
 // and linear interpolation floors. The maximum absolute error is 2⁻²⁰ turn.

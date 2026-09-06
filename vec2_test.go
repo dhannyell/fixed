@@ -63,7 +63,7 @@ func TestVec2NormPreservesScale(t *testing.T) {
 			t.Errorf("%s Normalize = %v, want %v", c.name, got, c.unit)
 		}
 		if got := fixed.SaturationCount(); got != expectedSaturations(c.saturations) {
-			t.Errorf("%s SaturationCount = %d, want %d", c.name, got, c.saturations)
+			t.Errorf("%s SaturationCount = %d, want %d", c.name, got, expectedSaturations(c.saturations))
 		}
 	}
 
@@ -89,4 +89,24 @@ func TestVec2SaturationPropagates(t *testing.T) {
 
 func TestVec2DivByZeroPanics(t *testing.T) {
 	expectPanic(t, func() { vec2FromInts(1, 2).Div(fixed.Q32Zero()) })
+}
+
+func TestVec2LerpCountsIntermediateSaturation(t *testing.T) {
+	v := fixed.Vec2{X: fixed.Q32MinValue()}
+	target := fixed.Vec2{X: fixed.Q32MaxValue()}
+	for _, c := range []struct {
+		t, want fixed.Q32
+	}{
+		{fixed.Q32Zero(), fixed.Q32MinValue()},
+		{fixed.Q32One(), fixed.Q32FromRaw(-1)},
+	} {
+		before := fixed.SaturationCount()
+		got := v.Lerp(target, c.t)
+		if got != (fixed.Vec2{X: c.want}) {
+			t.Errorf("Lerp at %v = %v, want X=%v", c.t, got, c.want)
+		}
+		if events := fixed.SaturationCount() - before; events != expectedSaturations(1) {
+			t.Errorf("Lerp at %v recorded %d events, want %d", c.t, events, expectedSaturations(1))
+		}
+	}
 }
