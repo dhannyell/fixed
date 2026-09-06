@@ -7,6 +7,9 @@ import (
 	"github.com/dhannyell/fixed"
 )
 
+// Four rotating accumulators keep the result sink from forming one serial
+// reduction. Each iteration still evaluates one operation; final reduction
+// happens after the timed loop. Loop and sink overhead remain in ns/op.
 const compareMask = 255
 
 var benchSinkFloat32 float32
@@ -38,19 +41,21 @@ func BenchmarkCompareQ16Add(b *testing.B) {
 	q, f := compareQ16Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		step := fixed.Q16FromRaw(1)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += int64(q[i&compareMask].Add(step).Raw())
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(int64(q[i&compareMask].Add(step).Raw()))
 		}
-		benchSinkQ16 = acc
+		b.StopTimer()
+		benchSinkQ16 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float32", func(b *testing.B) {
 		const step = float32(0x1p-16)
-		var acc float32
+		var acc0, acc1, acc2, acc3 float32
 		for i := range b.N {
-			acc += f[i&compareMask] + step
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]+step)
 		}
-		benchSinkFloat32 = acc
+		b.StopTimer()
+		benchSinkFloat32 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -58,19 +63,21 @@ func BenchmarkCompareQ16Mul(b *testing.B) {
 	q, f := compareQ16Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		factor := fixed.Q16FromRatio(255, 256)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += int64(q[i&compareMask].Mul(factor).Raw())
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(int64(q[i&compareMask].Mul(factor).Raw()))
 		}
-		benchSinkQ16 = acc
+		b.StopTimer()
+		benchSinkQ16 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float32", func(b *testing.B) {
 		const factor = float32(255.0 / 256.0)
-		var acc float32
+		var acc0, acc1, acc2, acc3 float32
 		for i := range b.N {
-			acc += f[i&compareMask] * factor
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]*factor)
 		}
-		benchSinkFloat32 = acc
+		b.StopTimer()
+		benchSinkFloat32 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -78,36 +85,40 @@ func BenchmarkCompareQ16Div(b *testing.B) {
 	q, f := compareQ16Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		divisor := fixed.Q16FromInt(3)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += int64(q[i&compareMask].Div(divisor).Raw())
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(int64(q[i&compareMask].Div(divisor).Raw()))
 		}
-		benchSinkQ16 = acc
+		b.StopTimer()
+		benchSinkQ16 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float32", func(b *testing.B) {
-		var acc float32
+		var acc0, acc1, acc2, acc3 float32
 		for i := range b.N {
-			acc += f[i&compareMask] / 3
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]/3)
 		}
-		benchSinkFloat32 = acc
+		b.StopTimer()
+		benchSinkFloat32 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareQ16Sqrt(b *testing.B) {
 	q, f := compareQ16Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += int64(q[i&compareMask].Sqrt().Raw())
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(int64(q[i&compareMask].Sqrt().Raw()))
 		}
-		benchSinkQ16 = acc
+		b.StopTimer()
+		benchSinkQ16 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float32", func(b *testing.B) {
-		var acc float32
+		var acc0, acc1, acc2, acc3 float32
 		for i := range b.N {
-			acc += float32(math.Sqrt(float64(f[i&compareMask])))
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(float32(math.Sqrt(float64(f[i&compareMask]))))
 		}
-		benchSinkFloat32 = acc
+		b.StopTimer()
+		benchSinkFloat32 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -115,19 +126,21 @@ func BenchmarkCompareQ32Add(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		step := fixed.Q32FromRaw(1)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Add(step).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Add(step).Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		const step = 0x1p-32
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += f[i&compareMask] + step
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]+step)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -135,19 +148,21 @@ func BenchmarkCompareQ32Mul(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		factor := fixed.Q32FromRatio(255, 256)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Mul(factor).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Mul(factor).Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		const factor = 255.0 / 256.0
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += f[i&compareMask] * factor
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]*factor)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -155,100 +170,110 @@ func BenchmarkCompareQ32Div(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		divisor := fixed.Q32FromInt(3)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Div(divisor).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Div(divisor).Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += f[i&compareMask] / 3
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]/3)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareQ32Sqrt(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Sqrt().Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Sqrt().Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += math.Sqrt(f[i&compareMask])
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(math.Sqrt(f[i&compareMask]))
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareVec2Len(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
-			acc += (fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]}).Len().Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+((fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]}).Len().Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
 			x, y := f[j], f[(j*31)&compareMask]
-			acc += math.Sqrt(x*x + y*y)
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(math.Sqrt(x*x+y*y))
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareVec2Normalize(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
 			n := (fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]}).Normalize()
-			acc += n.X.Raw() + n.Y.Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(n.X.Raw()+n.Y.Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
 			x, y := f[j], f[(j*31)&compareMask]
 			length := math.Sqrt(x*x + y*y)
-			acc += x/length + y/length
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(x/length+y/length)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareVec2NormalizeAxial(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			n := (fixed.Vec2{X: q[i&compareMask]}).Normalize()
-			acc += n.X.Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(n.X.Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			x := f[i&compareMask]
-			acc += x / math.Sqrt(x*x)
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(x/math.Sqrt(x*x))
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -256,21 +281,23 @@ func BenchmarkCompareVec2Dot(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		base := fixed.Vec2{X: fixed.Q32FromRatio(255, 256), Y: fixed.Q32FromRatio(1, 256)}
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
-			acc += (fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]}).Dot(base).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+((fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]}).Dot(base).Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		const bx, by = 255.0 / 256.0, 1.0 / 256.0
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
-			acc += f[j]*bx + f[(j*31)&compareMask]*by
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[j]*bx+f[(j*31)&compareMask]*by)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -278,23 +305,25 @@ func BenchmarkCompareRotApply(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		r := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
 			w := r.Apply(fixed.Vec2{X: q[j], Y: q[(j*31)&compareMask]})
-			acc += w.X.Raw() + w.Y.Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(w.X.Raw()+w.Y.Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		sin, cos := math.Sincos(2 * math.Pi / 12)
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
 			x, y := f[j], f[(j*31)&compareMask]
-			acc += cos*x - sin*y + sin*x + cos*y
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(cos*x-sin*y+sin*x+cos*y)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -302,107 +331,117 @@ func BenchmarkCompareRotMul(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		step := fixed.RotFromTurns(fixed.Q32FromRatio(1, 12))
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
 			n := (fixed.Rot{Sin: q[j], Cos: q[(j*31)&compareMask]}).Mul(step)
-			acc += n.Sin.Raw() + n.Cos.Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(n.Sin.Raw()+n.Cos.Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		sin2, cos2 := math.Sincos(2 * math.Pi / 12)
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
 			sin1, cos1 := f[j], f[(j*31)&compareMask]
-			acc += sin1*cos2 + cos1*sin2 + cos1*cos2 - sin1*sin2
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(sin1*cos2+cos1*sin2+cos1*cos2-sin1*sin2)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareRotNormalize(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
 			n := (fixed.Rot{Sin: q[j], Cos: q[(j*31)&compareMask]}).Normalize()
-			acc += n.Sin.Raw() + n.Cos.Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(n.Sin.Raw()+n.Cos.Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
 			sin, cos := f[j], f[(j*31)&compareMask]
 			length := math.Sqrt(sin*sin + cos*cos)
-			acc += sin/length + cos/length
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(sin/length+cos/length)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareSinCosTurns(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			a := q[i&compareMask]
-			acc += fixed.SinTurns(a).Raw() + fixed.CosTurns(a).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(fixed.SinTurns(a).Raw()+fixed.CosTurns(a).Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			sin, cos := math.Sincos(f[i&compareMask] * 2 * math.Pi)
-			acc += sin + cos
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(sin+cos)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareRotFromTurns(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			r := fixed.RotFromTurns(q[i&compareMask])
-			acc += r.Sin.Raw() + r.Cos.Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(r.Sin.Raw()+r.Cos.Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			sin, cos := math.Sincos(f[i&compareMask] * 2 * math.Pi)
-			acc += sin + cos
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(sin+cos)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareAtan2Turns(b *testing.B) {
 	q, f := compareQ32Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
 			j := i & compareMask
-			acc += fixed.Atan2Turns(q[j], q[(j*31)&compareMask]).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(fixed.Atan2Turns(q[j], q[(j*31)&compareMask]).Raw())
 		}
-		benchSinkQ32 = acc
+		b.StopTimer()
+		benchSinkQ32 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		const invTau = 1 / (2 * math.Pi)
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
 			j := i & compareMask
-			acc += math.Atan2(f[j], f[(j*31)&compareMask]) * invTau
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(math.Atan2(f[j], f[(j*31)&compareMask])*invTau)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -421,19 +460,21 @@ func BenchmarkCompareQ48Add(b *testing.B) {
 	q, f := compareQ48Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		step := fixed.Q48FromRaw(1)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Add(step).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Add(step).Raw())
 		}
-		benchSinkQ48 = acc
+		b.StopTimer()
+		benchSinkQ48 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		const step = 0x1p-16
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += f[i&compareMask] + step
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]+step)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -441,19 +482,21 @@ func BenchmarkCompareQ48Mul(b *testing.B) {
 	q, f := compareQ48Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		factor := fixed.Q48FromRatio(255, 256)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Mul(factor).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Mul(factor).Raw())
 		}
-		benchSinkQ48 = acc
+		b.StopTimer()
+		benchSinkQ48 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
 		const factor = 255.0 / 256.0
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += f[i&compareMask] * factor
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]*factor)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -464,19 +507,21 @@ func BenchmarkCompareQ48MulAdd16(b *testing.B) {
 	q, f := compareQ16Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		factor := fixed.Q16FromRatio(255, 256)
-		acc := fixed.Q48Zero()
+		var acc0, acc1, acc2, acc3 fixed.Q48
 		for i := range b.N {
-			acc = acc.MulAdd16(q[i&compareMask], factor)
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0.MulAdd16(q[i&compareMask], factor)
 		}
-		benchSinkQ48 = acc.Raw()
+		b.StopTimer()
+		benchSinkQ48 = acc0.Raw() + acc1.Raw() + acc2.Raw() + acc3.Raw()
 	})
 	b.Run("float64", func(b *testing.B) {
 		const factor = float32(255.0 / 256.0)
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += float64(f[i&compareMask] * factor)
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(float64(f[i&compareMask]*factor))
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
@@ -484,35 +529,39 @@ func BenchmarkCompareQ48Div(b *testing.B) {
 	q, f := compareQ48Inputs()
 	b.Run("fixed", func(b *testing.B) {
 		divisor := fixed.Q48FromInt(3)
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Div(divisor).Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Div(divisor).Raw())
 		}
-		benchSinkQ48 = acc
+		b.StopTimer()
+		benchSinkQ48 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += f[i&compareMask] / 3
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(f[i&compareMask]/3)
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }
 
 func BenchmarkCompareQ48Sqrt(b *testing.B) {
 	q, f := compareQ48Inputs()
 	b.Run("fixed", func(b *testing.B) {
-		var acc int64
+		var acc0, acc1, acc2, acc3 int64
 		for i := range b.N {
-			acc += q[i&compareMask].Sqrt().Raw()
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(q[i&compareMask].Sqrt().Raw())
 		}
-		benchSinkQ48 = acc
+		b.StopTimer()
+		benchSinkQ48 = acc0 + acc1 + acc2 + acc3
 	})
 	b.Run("float64", func(b *testing.B) {
-		var acc float64
+		var acc0, acc1, acc2, acc3 float64
 		for i := range b.N {
-			acc += math.Sqrt(f[i&compareMask])
+			acc0, acc1, acc2, acc3 = acc1, acc2, acc3, acc0+(math.Sqrt(f[i&compareMask]))
 		}
-		benchSinkFloat64 = acc
+		b.StopTimer()
+		benchSinkFloat64 = acc0 + acc1 + acc2 + acc3
 	})
 }

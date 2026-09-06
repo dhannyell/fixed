@@ -61,9 +61,10 @@ func withKernels(k batchKernels, fn func()) {
 	fn()
 }
 
-func runBatch(b *testing.B, op, impl string, n int, run func()) {
+// Bytes count logical slice reads and writes, not physical memory traffic.
+func runBatch(b *testing.B, op, impl string, n, bytesPerElement int, run func()) {
 	b.Run("op="+op+"/impl="+impl+"/n="+strconv.Itoa(n), func(b *testing.B) {
-		b.SetBytes(int64(n) * 4)
+		b.SetBytes(int64(n) * int64(bytesPerElement))
 		b.ResetTimer()
 		for range b.N {
 			run()
@@ -84,7 +85,7 @@ func benchmarkBatchSizes(b *testing.B, sizes []int) {
 		a, y := benchInputs(n)
 		dst := make([]Q16, n)
 
-		runBatch(b, "add", "percall", n, func() {
+		runBatch(b, "add", "percall", n, 12, func() {
 			for i := range a {
 				dst[i] = a[i].Add(y[i])
 			}
@@ -94,13 +95,13 @@ func benchmarkBatchSizes(b *testing.B, sizes []int) {
 			table := kernels
 			table.add = k.fn
 			withKernels(table, func() {
-				runBatch(b, "add", k.name, n, func() {
+				runBatch(b, "add", k.name, n, 12, func() {
 					BatchAdd16(dst, a, y)
 					drain(dst)
 				})
 			})
 		}
-		runBatch(b, "sub", "percall", n, func() {
+		runBatch(b, "sub", "percall", n, 12, func() {
 			for i := range a {
 				dst[i] = a[i].Sub(y[i])
 			}
@@ -110,14 +111,14 @@ func benchmarkBatchSizes(b *testing.B, sizes []int) {
 			table := kernels
 			table.sub = k.fn
 			withKernels(table, func() {
-				runBatch(b, "sub", k.name, n, func() {
+				runBatch(b, "sub", k.name, n, 12, func() {
 					BatchSub16(dst, a, y)
 					drain(dst)
 				})
 			})
 		}
 
-		runBatch(b, "mul", "percall", n, func() {
+		runBatch(b, "mul", "percall", n, 12, func() {
 			for i := range a {
 				dst[i] = a[i].Mul(y[i])
 			}
@@ -127,7 +128,7 @@ func benchmarkBatchSizes(b *testing.B, sizes []int) {
 			table := kernels
 			table.mul = k.fn
 			withKernels(table, func() {
-				runBatch(b, "mul", k.name, n, func() {
+				runBatch(b, "mul", k.name, n, 12, func() {
 					BatchMul16(dst, a, y)
 					drain(dst)
 				})
@@ -135,7 +136,7 @@ func benchmarkBatchSizes(b *testing.B, sizes []int) {
 		}
 
 		lo, hi := Q16{raw: -q16RawOne}, Q16{raw: q16RawOne}
-		runBatch(b, "clamp", "percall", n, func() {
+		runBatch(b, "clamp", "percall", n, 8, func() {
 			for i := range a {
 				dst[i] = a[i].Clamp(lo, hi)
 			}
@@ -145,7 +146,7 @@ func benchmarkBatchSizes(b *testing.B, sizes []int) {
 			table := kernels
 			table.clamp = k.fn
 			withKernels(table, func() {
-				runBatch(b, "clamp", k.name, n, func() {
+				runBatch(b, "clamp", k.name, n, 8, func() {
 					BatchClamp16(dst, a, lo, hi)
 					drain(dst)
 				})
@@ -217,7 +218,7 @@ func benchmarkConversions(b *testing.B, n int, a, dst []Q16) {
 // q48mul16 reads a Q48 and a Q16 and writes a Q48 per element.
 func benchmarkBatch48(b *testing.B, n int, a, y []Q16) {
 	var sink int64
-	runBatch(b, "dot16", "percall", n, func() {
+	runBatch(b, "dot16", "percall", n, 8, func() {
 		var d Q48
 		for i := range a {
 			d = d.MulAdd16(a[i], y[i])
@@ -228,7 +229,7 @@ func benchmarkBatch48(b *testing.B, n int, a, y []Q16) {
 		table := kernels
 		table.dot16 = k.fn
 		withKernels(table, func() {
-			runBatch(b, "dot16", k.name, n, func() {
+			runBatch(b, "dot16", k.name, n, 8, func() {
 				sink += BatchDot16(a, y).raw
 			})
 		})
@@ -236,7 +237,7 @@ func benchmarkBatch48(b *testing.B, n int, a, y []Q16) {
 
 	q, f := benchMul16Inputs(n)
 	prod := make([]Q48, n)
-	runBatch(b, "q48mul16", "percall", n, func() {
+	runBatch(b, "q48mul16", "percall", n, 20, func() {
 		for i := range q {
 			prod[i] = q[i].Mul16(f[i])
 		}
@@ -248,7 +249,7 @@ func benchmarkBatch48(b *testing.B, n int, a, y []Q16) {
 		table := kernels
 		table.q48Mul16 = k.fn
 		withKernels(table, func() {
-			runBatch(b, "q48mul16", k.name, n, func() {
+			runBatch(b, "q48mul16", k.name, n, 20, func() {
 				BatchQ48Mul16(prod, q, f)
 				if len(prod) != 0 {
 					sink += prod[len(prod)-1].raw
@@ -306,24 +307,24 @@ func BenchmarkBatchSaturation(b *testing.B) {
 		}
 
 		dst16 := make([]Q16, n)
-		runSaturationBatch(b, "add", density.name, "percall", n, 4, func() {
+		runSaturationBatch(b, "add", density.name, "percall", n, 12, func() {
 			for i := range n {
 				dst16[i] = a[i].Add(addend[i])
 			}
 			drain(dst16)
 		})
-		runSaturationBatch(b, "add", density.name, "batch", n, 4, func() {
+		runSaturationBatch(b, "add", density.name, "batch", n, 12, func() {
 			BatchAdd16(dst16, a, addend)
 			drain(dst16)
 		})
 
-		runSaturationBatch(b, "mul", density.name, "percall", n, 4, func() {
+		runSaturationBatch(b, "mul", density.name, "percall", n, 12, func() {
 			for i := range n {
 				dst16[i] = m[i].Mul(factor[i])
 			}
 			drain(dst16)
 		})
-		runSaturationBatch(b, "mul", density.name, "batch", n, 4, func() {
+		runSaturationBatch(b, "mul", density.name, "batch", n, 12, func() {
 			BatchMul16(dst16, m, factor)
 			drain(dst16)
 		})
@@ -340,13 +341,13 @@ func BenchmarkBatchSaturation(b *testing.B) {
 		})
 
 		dst48 := make([]Q48, n)
-		runSaturationBatch(b, "q48mul16", density.name, "percall", n, 12, func() {
+		runSaturationBatch(b, "q48mul16", density.name, "percall", n, 20, func() {
 			for i := range n {
 				dst48[i] = q[i].Mul16(qFactor[i])
 			}
 			drainQ48(dst48)
 		})
-		runSaturationBatch(b, "q48mul16", density.name, "batch", n, 12, func() {
+		runSaturationBatch(b, "q48mul16", density.name, "batch", n, 20, func() {
 			BatchQ48Mul16(dst48, q, qFactor)
 			drainQ48(dst48)
 		})

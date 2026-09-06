@@ -1,25 +1,24 @@
 # fixed
 
-`fixed` is a small Go package for signed fixed-point arithmetic. Equal inputs
-produce the same result bits on every supported architecture.
+`fixed` is a Go library for signed fixed-point arithmetic. It gives the same
+result bits for the same inputs on every supported architecture, with explicit
+rules for rounding and overflow.
 
-The package provides three formats without choosing a default. `Q32` stores
-Q32.32 in an `int64`, with resolution 2⁻³² and range
-[-2³¹, 2³¹ - 2⁻³²]. `Q16` stores Q16.16 in an `int32`, with resolution 2⁻¹⁶
-and range [-2¹⁵, 2¹⁵ - 2⁻¹⁶]. `Q48` stores Q48.16 in an `int64`, with
-resolution 2⁻¹⁶ and range [-2⁴⁷, 2⁴⁷ - 2⁻¹⁶]; it accumulates `Q16` products.
-Consumers choose the format that fits their range and storage requirements.
+It includes three numeric formats, 2D vectors, rotations, trigonometry, and
+batch operations. Choose the format that fits your data; the library has no
+default numeric type.
 
-The module is pre-v1. Its import path may change before the first stable
-release. It requires Go 1.26.4 or newer.
-
-## Install
+Requires **Go 1.26.4 or newer**. The module is pre-v1, and its import path may
+change before the first stable release.
 
 ```sh
 go get github.com/dhannyell/fixed
 ```
 
-## Quick start
+## Getting started
+
+Construct values from integers, ratios, decimal strings, or raw bits. Methods
+return new values, so arithmetic reads much like the calculation itself:
 
 ```go
 package main
@@ -33,29 +32,58 @@ import (
 func main() {
 	a := fixed.Vec2{X: fixed.Q32FromInt(1), Y: fixed.Q32FromInt(2)}
 	b := fixed.Vec2{X: fixed.Q32FromInt(4), Y: fixed.Q32FromInt(6)}
-	distance := a.Distance(b)
+
+	fmt.Println(a.Distance(b)) // 5
 
 	quarterTurn := fixed.RotFromTurns(fixed.Q32FromRatio(1, 4))
 	direction := quarterTurn.Apply(fixed.Vec2{X: fixed.Q32One()})
-
-	fmt.Println(distance)                 // 5
 	fmt.Println(direction.X, direction.Y) // 0 1
 }
 ```
 
-## Why there is no float constructor
+See the [package documentation](https://pkg.go.dev/github.com/dhannyell/fixed)
+for the full API.
 
-Floating-point input can already contain small differences caused by an
-earlier computation. The package cannot recover the intended exact value from
-those bits. For this reason, `fixed` accepts only explicit inputs:
+## Choosing a format
 
-- `Q32FromInt`, `Q16FromInt`, and `Q48FromInt` for integers.
-- `Q32FromRatio`, `Q16FromRatio`, and `Q48FromRatio` for exact ratios.
-- `Q32MustParse`, `Q16MustParse`, and `Q48MustParse` for decimal literals.
-- `Q32FromRaw`, `Q16FromRaw`, and `Q48FromRaw` for exact bit patterns.
+A fixed-point value is an integer with a fixed scale. For example, one raw
+unit in `Q16` represents 1/65536. The format determines both the smallest step
+you can represent and how large a value can get.
 
-`String` provides the inverse text boundary. It emits a canonical decimal
-representation, and every value satisfies:
+| Type | Format | Storage | Smallest step | Range |
+| --- | --- | --- | --- | --- |
+| `Q16` | Q16.16 | `int32` | 2⁻¹⁶ | −2¹⁵ to 2¹⁵ − 2⁻¹⁶ |
+| `Q32` | Q32.32 | `int64` | 2⁻³² | −2³¹ to 2³¹ − 2⁻³² |
+| `Q48` | Q48.16 | `int64` | 2⁻¹⁶ | −2⁴⁷ to 2⁴⁷ − 2⁻¹⁶ |
+
+Use `Q16` when compact storage and 16 fractional bits are enough. `Q32` gives
+you more fractional precision and is the format used by vectors and rotations.
+`Q48` keeps the resolution of `Q16` while providing more room for large values
+and accumulated products.
+
+The underlying fields are private. Use constructors and `Raw` to move between
+numeric values and their stored representation.
+
+### Creating and printing values
+
+Each format has the same constructor names:
+
+| Input | Q32 example | Meaning |
+| --- | --- | --- |
+| Integer | `fixed.Q32FromInt(3)` | The whole number 3 |
+| Ratio | `fixed.Q32FromRatio(1, 3)` | 1/3, truncated to the Q32 grid |
+| Decimal | `fixed.Q32MustParse("0.25")` | A decimal rounded to the nearest representable value |
+| Raw bits | `fixed.Q32FromRaw(1)` | One raw unit, or 2⁻³² |
+
+Replace `Q32` with `Q16` or `Q48` to use another format. `Q48FromInt` and
+`Q48FromRatio` take `int64` arguments, and `Q48.Int` returns `int64`; its range
+does not fit a 32-bit `int`. The corresponding Q16 and Q32 APIs use `int`.
+
+There is no float constructor. A floating-point calculation may already have
+introduced rounding differences before the value reaches this library.
+Integers, ratios, text, and raw bits make that input boundary explicit.
+
+`String` produces a canonical decimal that parses back to the same value:
 
 ```go
 fixed.Q32MustParse(q32.String()) == q32
@@ -63,121 +91,343 @@ fixed.Q16MustParse(q16.String()) == q16
 fixed.Q48MustParse(q48.String()) == q48
 ```
 
-## Arithmetic contract
+## Rounding and overflow
 
-All formats use the same explicit rule for each operation:
+Overflow clamps a result to the format's minimum or maximum value. This is
+called *saturation*. Each saturation increments the process-wide atomic
+`SaturationCount` counter, which you can use for diagnostics without affecting
+the calculation.
 
-| Operation | Result |
+### Disabling the saturation counter
+
+Counting is enabled by default for diagnostics. For production builds, use
+the `fixed_nosatcounter` build tag to remove it at compile time:
+
+```sh
+go build -tags=fixed_nosatcounter ./...
+```
+
+The same tag works for WebAssembly. In PowerShell:
+
+```powershell
+$env:GOOS = "js"
+$env:GOARCH = "wasm"
+go build -tags=fixed_nosatcounter ./...
+```
+
+Overflow still clamps to the same limits and every numeric result keeps the
+same bits. The flag removes diagnostic increments, atomic counter access, and
+local event counting in batch kernels. It does not remove the checks needed
+to saturate arithmetic. There is no runtime switch to check on each operation.
+
+On `js/wasm` and `wasip1` the counter is a plain variable rather than an
+atomic. Those targets run on one thread without asynchronous preemption, so
+an increment cannot be interrupted, and the atomic call would otherwise keep
+the scalar methods from inlining on WebAssembly.
+
+`SaturationCountingEnabled` is a compile-time constant. With the tag enabled,
+it is `false`, `SaturationCount()` always returns zero, and
+`ResetSaturationCount()` does nothing. Omit the tag in development to restore
+counting. You can combine it with `GOEXPERIMENT=simd`.
+
+To measure the effect on your target, run the same benchmark in both modes:
+
+```sh
+go test -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
+go test -tags=fixed_nosatcounter -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
+```
+
+These tests include safe and saturating inputs. Scalar counting happens only
+when an operation saturates; batch kernels can also spend time collecting
+events locally. The benefit depends on the workload and target.
+
+### Arithmetic rules
+
+| Operation | Rounding rule |
 | --- | --- |
-| `Add`, `Sub` | Exact result in the selected format, with saturation on overflow |
-| `Mul` | Product floored to the selected format, with saturation on overflow |
-| `Div`, `FromRatio` | Quotient truncated toward zero, with saturation on overflow |
-| `Sqrt` | Square root floored to the selected format |
-| `Round`, `MustParse` | Nearest representable value; exact halves round away from zero |
-| `Q48.MulAdd16` | Exact `Q16` product floored to Q48.16, then added with saturation on overflow |
-| `Q48.Mul16` | `Q48` times `Q16`, floored to Q48.16 with saturation on overflow; same bits as `Mul` on the widened factor |
-| `Q16.ToQ32`, `Q16.ToQ48` | Exact; the grid gets finer and the range gets wider |
-| `Q32.ToQ16` | Floored to the coarser grid, with saturation outside the narrower range |
-| `Q32.ToQ48` | Floored to the coarser grid; the range gets wider, so no saturation |
-| `Q48.ToQ16` | Exact on the shared grid, with saturation outside the narrower range |
-| `Q48.ToQ32` | Exact on the finer grid, with saturation outside the narrower range |
+| `Add`, `Sub` | Exact when the result fits |
+| `Mul` | Round down to the format's grid |
+| `Div`, `FromRatio` | Truncate toward zero |
+| `Sqrt` | Round down to the format's grid |
+| `Round` | Nearest integer; exact halves go away from zero |
+| `MustParse` | Nearest representable value; exact halves go away from zero |
+| `Int` | Integer part, truncated toward zero |
 
-A conversion applies two independent rules. A finer fraction grid is exact
-and a coarser one floors. A wider integer range never saturates and a
-narrower one saturates. `Q48.ToQ32` refines the grid and narrows the range
-at the same time. Conversion and division deliberately use different
-rounding: a coarser grid floors, while division truncates toward zero.
+Rounding down and truncating toward zero differ for negative values. The
+library keeps that distinction: multiplication rounds down, while division
+truncates toward zero. Results outside the target range saturate.
 
-`Q48.Int`, `Q48FromInt`, and `Q48FromRatio` use `int64`. The 48-bit integer
-range does not fit an `int` on 32-bit architectures, and a truncated `int`
-would break determinism between architectures. `Q32` and `Q16` keep `int`,
-because their integer range fits 32 bits.
+Division by zero, a zero denominator in `FromRatio`, and the square root of a
+negative value panic.
 
-`Q48` exists for sums of `Q16` products. A product has at most 32 integer
-bits, and `MulAdd16` keeps 16 bits of headroom above it, so a sum of up to
-2¹⁶ full-range products cannot saturate:
+Saturation also makes the order of addition matter. Near the limits,
+`a.Add(b).Add(c)` can differ from `a.Add(b.Add(c))`. Leave enough room in an
+accumulator if you need to avoid that effect.
+
+### Converting between formats
+
+Conversions preserve a value exactly when the destination has enough range
+and fractional precision. Dropping fractional bits rounds down; exceeding the
+destination's range saturates.
+
+| Conversion | Behavior |
+| --- | --- |
+| `Q16.ToQ32` | Exact; more range and finer resolution |
+| `Q16.ToQ48` | Exact; more range, same resolution |
+| `Q32.ToQ16` | Rounds down; saturates outside the Q16 range |
+| `Q32.ToQ48` | Rounds down; the wider range needs no saturation |
+| `Q48.ToQ16` | Same resolution; saturates outside the Q16 range |
+| `Q48.ToQ32` | Exact when in range; saturates outside the Q32 range |
+
+### Accumulating Q16 products
+
+`Q48.MulAdd16` multiplies two Q16 values, rounds the product down to Q48.16,
+and adds it to the accumulator with saturation. Starting from zero, a sum of
+up to 2¹⁶ full-range Q16 products fits in Q48.
 
 ```go
 var acc fixed.Q48
 for i := range a {
 	acc = acc.MulAdd16(a[i], b[i])
 }
-dot := acc.ToQ16() // Narrow only when the value is stored.
+dot := acc.ToQ16() // Convert back when you need the narrower value.
 ```
 
-Division by zero panics. `Sqrt` of a negative value also panics.
+`Q48.Mul16` multiplies a Q48 value by a Q16 factor. It rounds down and
+saturates just like `Mul` with the factor converted to Q48.
 
-Saturated addition is not associative near the limits. Reordering a sum can
-therefore change its result. Accumulators should have enough headroom to avoid
-saturation.
+## Vectors, rotations, and angles
 
-Every saturation increments a process-wide atomic counter. `SaturationCount`
-provides diagnostics without changing any fixed-point value or operation
-result.
+`Vec2` holds two Q32 components and supports addition, scaling, dot products,
+length, normalization, distance, and interpolation.
 
-## Cost of operations
+Three details matter near the numeric limits:
 
-The contract promises bits, not speed. The numbers below are a guide for
-design choices on one machine: AMD Ryzen 7 5800X3D (amd64), Go 1.26.4. They
-are medians of ten runs with `-benchtime=500ms`; Windows scheduling produced
-occasional high outliers that the median excludes.
+- `LenSq` uses scalar multiplication and addition, so it can saturate even
+  when the length itself fits. `Len` uses a 128-bit intermediate and saturates
+  only if the final magnitude is too large.
+- `Normalize` rescales components before squaring them to avoid intermediate
+  overflow and underflow.
+- `Lerp` evaluates `Sub`, `Mul`, and `Add` with their usual saturation rules.
+  If `target - v` overflows, `t=1` may miss the target and `t=0` still records
+  that intermediate overflow. Keep the intermediate values in range when
+  exact endpoints matter.
 
-| Operation | Latency (ns) | Throughput (ns) | Throughput (M op/s) | Fixed time vs float |
-| --- | --- | --- | --- | --- |
-| `Q16.Add` | 0.5 | 0.5 | 2,000 | −17% (faster) |
-| `Q16.Mul` | 1.7 | 0.8 | 1,200 | +30% (slower) |
-| `Q16.Div` | 3.3 | 1.1 | 910 | +35% (slower) |
-| `Q16.Sqrt` | 9.7 | 2.2 | 460 | +86% (slower) |
-| `Q32.Add` | 0.4 | 0.5 | 1,900 | −27% (faster) |
-| `Q32.Mul` | 2.8 | 1.4 | 690 | +114% (slower) |
-| `Q32.Div` | 4.7 | 3.1 | 330 | +138% (slower) |
-| `Q32.Sqrt` | 11.1 | 2.9 | 350 | +54% (slower) |
-| `Q48.Add` | 0.5 | 0.5 | 2,100 | −30% (faster) |
-| `Q48.Mul` | 2.6 | 1.5 | 680 | +105% (slower) |
-| `Q48.MulAdd16` | 1.0 | 0.7 | 1,500 | +73% (slower) |
-| `Q48.Div` | 4.3 | 5.1 | 200 | +270% (slower) |
-| `Q48.Sqrt` | 11.1 | 3.0 | 330 | +91% (slower) |
-| `Vec2.Dot` | 3.3 | 3.4 | 290 | +435% (slower) |
-| `Vec2.Len` | 16.0 | 13.1 | 76 | +247% (slower) |
-| `Vec2.Normalize` | 26.4 | 18.3 | 55 | +382% (slower) |
-| `Vec2.Normalize` axial | 12.5 | 11.4 | 87 | +280% (slower) |
-| `Rot.Apply` | 5.5 | 5.9 | 170 | +688% (slower) |
-| `Rot.Mul` | 5.6 | 6.1 | 160 | +718% (slower) |
-| `Rot.Normalize` | 26.7 | 18.5 | 54 | +379% (slower) |
-| `SinTurns` + `CosTurns` | — | 4.3 per pair | 230 pairs | −61% (faster) |
-| `RotFromTurns` | — | 3.5 | 280 | −64% (faster) |
-| `Atan2Turns` | — | 3.9 | 250 | −54% (faster) |
+Angles are measured in **turns**: `Q32One()` is a full revolution,
+`Q32Half()` is a half turn, and `Q32FromRatio(1, 4)` is a quarter turn.
+This represents a circle directly in the fractional bits without reducing
+angles through an approximation of pi.
 
-Read each column alone; the columns measure different situations. Latency is
-the cost when each result feeds the next operation, as in an iterative
-solver. Throughput is the cost when independent operations overlap in the
-pipeline, as in a loop over many values. The rate column is the reciprocal of
-the throughput column, rounded to two digits; use it to size a frame budget.
-Each latency chain also contains one cheap companion operation that keeps the
-value in domain; `bench_test.go` shows the exact chains.
+`SinTurns`, `CosTurns`, and `Atan2Turns` use committed lookup tables with
+linear interpolation. Sine and cosine have a maximum absolute error of 2⁻²⁰;
+the angle returned by `Atan2Turns` has a maximum absolute error of 2⁻²⁰ turns.
+Its output is in `[-1/2, 1/2]`: the negative x axis returns `+1/2`, while
+values just below it can round to `-1/2`.
 
-The comparison column reports the raw change in throughput time:
-`(fixed time / float time - 1) × 100`. A negative value means fixed was faster;
-a positive value means it was slower. The paired benchmarks use the same
-prebuilt inputs. Q16 is compared with `float32`; Q32, Q48, vectors, and
-rotations are compared with `float64`. `Q48.MulAdd16` is compared with a
-`float64` sum of `float32` products, the shape a float solver uses for the
-same dot product. These safe-domain float kernels do not reproduce
-the package's saturation, rounding, or cross-architecture bit contract. Run
-them with:
+`Rot` stores sine and cosine together. You can apply, compose, or invert a
+rotation without another trigonometric lookup. Construct it with
+`RotIdentity` or `RotFromTurns`; the zero value is not a valid rotation.
+`Inv` is the conjugate and acts as an inverse for a unit rotation. Use
+`InvNormalized` when accumulated rounding drift also needs to be corrected.
+
+## Working with slices
+
+The batch API applies arithmetic or conversions to whole slices:
+
+| Functions | Work performed |
+| --- | --- |
+| `BatchAdd16`, `BatchSub16`, `BatchMul16`, `BatchClamp16` | Element-wise Q16 arithmetic and clamping |
+| `BatchQ32FromQ16`, `BatchQ16FromQ32` | Format conversion using the scalar conversion rules |
+| `BatchDot16` | Sum of Q16 products in a Q48 accumulator |
+| `BatchQ48Mul16` | Element-wise Q48 multiplication by Q16 factors |
+
+All slices in a call must have the same length. For element-wise operations
+on the same format, the destination can be exactly the same slice as a source.
+Other overlap is undefined.
+
+Batch arithmetic records saturation events in one counter update per call
+when needed. Element-wise results and saturation totals match the scalar
+operations.
+
+`BatchDot16` uses eight partial sums: element `i` goes into partial `i mod 8`,
+then the partials are combined in a balanced tree. Every implementation uses
+this order. It gives the same result as a serial `MulAdd16` loop when no
+intermediate sum saturates; saturation can make those two orders differ.
+
+### SIMD support
+
+Default builds use scalar kernels. With Go 1.27 or newer and
+`GOEXPERIMENT=simd`, the package selects AVX2 on supported amd64 CPUs or NEON
+on arm64 at initialization:
 
 ```sh
-go test -run '^$' -bench '^BenchmarkCompare' -benchtime=500ms -count=10
+GOEXPERIMENT=simd go build ./...
 ```
 
-The batch functions are measured separately, because they are compared with a
-loop rather than with a float. The numbers are nanoseconds per element at 1024
-elements, medians of twenty runs over two sessions on the same machine. The
-`per-call loop` column writes `dst[i] = a[i].Op(b[i])` by hand; `scalar` is the
-exported batch function in a default build; `avx2` is the same exported call
-in a build with `GOEXPERIMENT=simd` on Go 1.27. The benchmark goes through the
-exported function, so the length check and the counter update are inside the
-number.
+`BatchPath()` reports `"scalar"`, `"avx2"`, or `"neon"`. NEON covers the six
+Q16 arithmetic and conversion functions; `BatchDot16` and `BatchQ48Mul16`
+remain scalar on arm64. CI checks that vector kernels preserve the scalar
+results and saturation counts.
+
+## Performance
+
+Performance depends on how the operations are used. The tables below separate
+three questions:
+
+| Measurement | What it tells you |
+| --- | --- |
+| Dependent operations | The time for a step that needs the previous result |
+| Independent inputs | The throughput of a loop whose arithmetic can overlap |
+| Representative workloads | The cost of a complete numerical task, including loops and data access |
+
+All measurements used an AMD Ryzen 7 5800X3D, Windows/amd64, and Go 1.26.4.
+The first two tables were measured on 2026-09-05; the workloads on 2026-09-06.
+Each value is the median of ten runs at 500 ms per benchmark. Batch results
+use a separate procedure described below.
+All published tables below were measured with saturation counting enabled.
+
+These are measurements of specific loops and inputs. They include compiler
+and machine effects, and do not establish that fixed-point arithmetic is
+generally faster or slower than float. Sub-nanosecond results are particularly
+sensitive to loop overhead and code placement.
+
+### Dependent operations
+
+In [`Benchmark*Latency`](bench_test.go), each result feeds the next iteration.
+Some tests need extra arithmetic to keep values in range: the multiplication
+test, for example, measures `Mul + Add`. The last column lists the complete
+step. Loop control is included in every row.
+
+| Chain | Fixed ns/step | Work included in each step |
+| --- | --- | --- |
+| `Q16.Add` | 0.543 | Add |
+| `Q16.Mul` | 1.89 | Mul + Add |
+| `Q16.Div` | 3.37 | Div + Add |
+| `Q16.Sqrt` | 9.9 | Sqrt + Mul + Add + input update |
+| `Q32.Add` | 0.382 | Add |
+| `Q32.Mul` | 2.74 | Mul + Add |
+| `Q32.Div` | 4.76 | Div + Add |
+| `Q32.Sqrt` | 11.3 | Sqrt + Mul + Add + input update |
+| `Q48.Add` | 0.507 | Add |
+| `Q48.Mul` | 2.6 | Mul + Add |
+| `Q48.MulAdd16` | 0.86 | MulAdd16 + input update |
+| `Q48.Div` | 4.49 | Div + Add |
+| `Q48.Sqrt` | 11.1 | Sqrt + Mul + Add + input update |
+| `Vec2.Dot` | 4.51 | Dot + vector reconstruction |
+| `Vec2.Len` | 16.5 | Len + two Mul + vector reconstruction |
+| `Vec2.Normalize` | 27.1 | Normalize + two Mul + component swap |
+| `Vec2.Normalize` axial | 3.97 | Normalize + Mul + vector reconstruction |
+| `Rot.Apply` | 5.89 | Apply |
+| `Rot.Mul` | 6.05 | Mul |
+| `Rot.Normalize` | 26.4 | Normalize + two Mul + component swap |
+
+These are chain costs, not isolated instruction latencies. This table has no
+float comparison.
+
+```sh
+go test -run '^$' -bench '^Benchmark(Q16|Q32|Q48|Vec2|Rot).*Latency$' -benchtime=500ms -count=10 .
+```
+
+### Independent inputs
+
+[`BenchmarkCompare`](float_compare_test.go) reads prepared inputs and rotates
+between four accumulators, allowing more work to overlap. Each iteration
+evaluates one named operation; the sine/cosine row evaluates one pair.
+Array reads, indexing, accumulation, and loop control are timed. Combining
+the four accumulators at the end is excluded.
+
+The accumulators still have dependencies. In particular, `Q48.MulAdd16` uses
+them as operation inputs, so its row measures four interleaved accumulation
+chains. The table measures the throughput of these loops, not bare arithmetic
+instructions. To convert ns/iteration to millions of iterations per second,
+use `1000 / ns`.
+
+| Independent-input kernel | Fixed ns/iteration | Float ns/iteration | Fixed time vs float in this loop |
+| --- | --- | --- | --- |
+| `Q16.Add` | 0.885 | 0.767 | +15% (slower) |
+| `Q16.Mul` | 1.25 | 0.534 | +134% (slower) |
+| `Q16.Div` | 1.29 | 0.827 | +56% (slower) |
+| `Q16.Sqrt` | 2.61 | 1.21 | +115% (slower) |
+| `Q32.Add` | 0.654 | 0.632 | +3% (slower) |
+| `Q32.Mul` | 1.96 | 0.597 | +228% (slower) |
+| `Q32.Div` | 3.93 | 1.12 | +251% (slower) |
+| `Q32.Sqrt` | 3.96 | 2.09 | +89% (slower) |
+| `Q48.Add` | 0.691 | 0.625 | +11% (slower) |
+| `Q48.Mul` | 2.02 | 0.619 | +227% (slower) |
+| `Q48.MulAdd16` | 1.47 | 0.583 | +151% (slower) |
+| `Q48.Div` | 4.09 | 1.08 | +277% (slower) |
+| `Q48.Sqrt` | 4.26 | 2.09 | +103% (slower) |
+| `Vec2.Dot` | 5.54 | 0.945 | +486% (slower) |
+| `Vec2.Len` | 9.51 | 2.17 | +338% (slower) |
+| `Vec2.Normalize` | 20.7 | 4.32 | +378% (slower) |
+| `Vec2.Normalize` axial | 3.69 | 3.21 | +15% (slower) |
+| `Rot.Apply` | 8.16 | 1.22 | +567% (slower) |
+| `Rot.Mul` | 8.59 | 1.19 | +620% (slower) |
+| `Rot.Normalize` | 21.5 | 4.34 | +396% (slower) |
+| `SinTurns` + `CosTurns` | 5.22 | 11.5 | -54% (faster) |
+| `RotFromTurns` | 4.5 | 11.7 | -62% (faster) |
+| `Atan2Turns` | 5.75 | 12.4 | -53% (faster) |
+
+The percentage is `(fixed median / float median - 1) × 100`, calculated before
+rounding the displayed times. Negative means fixed took less time; positive
+means it took more time in this test.
+
+Q16 is compared with float32. The other formats, vectors, and rotations use
+float64. The Q48.MulAdd16 reference multiplies in float32 and accumulates the
+products in float64. These float versions do not reproduce fixed-point
+rounding, saturation, or bit guarantees.
+
+Older README results used a single accumulator, which limited float in
+particular. Those percentages are not directly comparable with this table.
+The older `Benchmark*Throughput` tests in `bench_test.go` also include input
+generation and a serial accumulation; they are not used here.
+
+```sh
+go test -run '^$' -bench '^BenchmarkCompare' -benchtime=500ms -count=10 .
+```
+
+### Representative workloads
+
+The [workload benchmarks](workload_bench_test.go) measure two complete
+numerical tasks. Both reuse 256-element arrays that fit in cache, avoid
+saturation, and allocated no memory during the measured work. They model
+common usage patterns; they are not measurements of a complete application.
+
+**Transform256** rotates and translates 256 Q32 points into an output array.
+The float64 version uses the same coordinates and rotation coefficients.
+The measurement includes arithmetic, calls, loops, reads, and writes. Input
+preparation and construction of the rotation are excluded.
+
+**Dot256** reduces 256 Q16 pairs into a Q48 accumulator. Each task starts
+from zero and uses one accumulator, because that dependency is part of this
+calculation. The float version reads float32 arrays, promotes the inputs,
+and multiplies and accumulates in float64. The fixed version rounds each
+product down to Q48.16, so the results are not bit-equivalent. Input
+preparation and the final benchmark result assignment are excluded.
+
+| Task (256 elements) | Fixed ns/task | Float ns/task | Fixed task time vs float |
+| --- | --- | --- | --- |
+| Transform256 | 2110 | 271 | +677% (slower) |
+| Dot256 | 351 | 193 | +82% (slower) |
+
+```sh
+go test -run '^$' -bench '^BenchmarkWorkload' -benchmem -benchtime=500ms -count=10 .
+```
+
+For larger datasets, frequent saturation, or application-level decisions,
+measure the workload you actually intend to run. To compare library versions,
+use the same benchmark source and Go version, alternate runs on the same
+machine, and analyze repeated samples with a tool such as benchstat. Keep the
+absolute fixed and float times: a changed percentage alone does not show which
+side changed.
+
+### Batch operations
+
+This table compares batch calls with hand-written loops. Values are **ns per
+element** for 1024 elements, using medians of twenty runs over two sessions
+on the same machine. Scalar results use the default build; AVX2 results use
+Go 1.27 with `GOEXPERIMENT=simd`. The batch measurements include the exported
+call, length checks, and any saturation-counter update.
 
 | Operation | per-call loop | scalar | avx2 |
 | --- | --- | --- | --- |
@@ -190,135 +440,70 @@ number.
 | `BatchDot16` | 1.18 | 1.40 | 0.57 |
 | `BatchQ48Mul16` | 1.51 | 1.48 | 0.73 |
 
-In these measurements, every scalar `Q16` batch function was faster than its
-hand-written loop. The default build therefore had no batch abstraction penalty
-for this workload. `BatchDot16` is the exception: its scalar kernel keeps eight
-partial sums so that every path shares one order, and that costs more than a
-serial loop when nothing saturates. The `per-call loop` for `BatchDot16` is a
-serial `Q48.MulAdd16` accumulator; for `BatchQ48Mul16` it is `Q48.Mul16`.
+The hand-written loops call the corresponding scalar method for each element.
+For `BatchDot16`, the reference is a serial `Q48.MulAdd16` loop; for
+`BatchQ48Mul16`, it is `Q48.Mul16`.
 
-arm64 has a NEON path for the six `Q16` functions. Its numbers are not
-published here because only shared CI runners have measured it, and a shared
-runner cannot support the comparison above. The two `Q48` functions stay
-scalar on arm64. NEON has two 64-bit lanes per register and no 64-bit
-multiply, and the measured candidates stayed under the 2.0x gain that a vector
-kernel must show over the scalar batch. On a shared arm64 runner the scalar
-`BatchDot16` was still 2.2x faster than the serial `Q48.MulAdd16` loop. SVE
-may change this; it is not in `simd/archsimd` yet.
+Scalar batches took less time than those loops in this workload, except for
+`BatchDot16`. Its eight partial sums preserve the same reduction order across
+implementations, but cost more here than the serial reference.
 
-Two portability notes. `Div` costs more on arm64, because the 128-bit
-division is a software routine there. `Sqrt` does not divide on any
-architecture: its hardware seed plus integer corrections stay within
-multiplications.
+NEON timings are omitted because the available measurements came from shared
+CI runners. `BatchDot16` and `BatchQ48Mul16` currently stay scalar on arm64;
+the tested vector candidates did not meet the project's twofold speedup
+threshold. Scalar division also costs more on arm64 because its 128-bit
+division uses a software routine. Square root uses a hardware seed followed
+by integer corrections, without division.
 
-## Vectors and angles
+## Implementation and compatibility
 
-`Vec2` provides the usual 2D operations over `Q32`: addition, scaling, dot
-product, length, normalization, distance, and interpolation. `LenSq` follows
-the scalar operation order and can saturate even when the length still fits.
-`Len` uses a 128-bit intermediate and saturates only when the final magnitude
-does not fit. `Normalize` scales the components before squaring them, which
-avoids intermediate overflow and underflow.
+The library is one package with no external runtime dependencies. Portable
+code imports `math`, `math/bits`, and `sync/atomic`. Some operations use a
+floating-point seed, then check and correct it with integer arithmetic so the
+final bits follow the fixed-point contract.
 
-Angles use turns instead of radians. `Q32One()` is one complete revolution,
-`Q32Half()` is half a revolution, and `Q32FromRatio(1, 4)` is a quarter turn.
-This maps the fractional bits of `Q32` directly onto the circle and avoids
-reduction through an approximation of pi.
+SIMD builds also use `simd/archsimd` and `unsafe`. All unsafe operations are
+in [`batch16_raw.go`](batch16_raw.go), where Q16, Q32, and Q48 slices are viewed
+as their underlying integer words. Compile-time checks enforce their sizes.
 
-`SinTurns`, `CosTurns`, and `Atan2Turns` use committed lookup tables and linear
-interpolation. Their maximum absolute error is 2⁻²⁰. `Rot` stores a rotation as
-its sine and cosine, which makes application, composition, and inversion
-available without another trigonometric lookup. The zero value of `Rot` is not
-a valid rotation; start with `RotIdentity` or `RotFromTurns`. `Rot.Inv` is the
-conjugate and is an inverse when the rotation has unit length. Use
-`Rot.InvNormalized` after accumulated rounding drift when normalization is
-required as part of the operation.
+Scalar arithmetic and decimal conversion live in `q*` and `decimal*` files;
+vectors, rotations, and trigonometry live in `vec2*`, `rot*`, and `trig*`.
+The constructors keep the format explicit. Applications can define local
+aliases if they choose to standardize on one type.
 
-## Batch operations
-
-`BatchAdd16`, `BatchSub16`, `BatchMul16`, and `BatchClamp16` apply one
-operation across whole slices of `Q16`. Every slice in a call must share one
-length. The destination may be the same slice as a source, so an operation can
-run in place; any other overlap is undefined. `BatchQ32FromQ16` and
-`BatchQ16FromQ32` move whole slices across the format boundary and follow the
-conversion rules of `Q16.ToQ32` and `Q32.ToQ16`. A batch call adds the number
-of saturated elements to the saturation counter in one update, so
-`SaturationCount` reports the same total as a loop over the scalar methods.
-
-`BatchDot16` sums `Q16` products into one `Q48`. Its order is fixed: element
-`i` joins partial sum `i mod 8`, and the eight partials reduce as a balanced
-tree. Without saturation this equals a loop over `Q48.MulAdd16`. With
-saturation the order decides the bits, so every kernel keeps it, and the result
-is the same on every host. `BatchQ48Mul16` scales a `Q48` slice by a `Q16`
-slice with the rules of `Q48.Mul16`.
-
-Every build runs the scalar kernels. Building with `GOEXPERIMENT=simd` on Go
-1.27 or later selects vector kernels at package initialization: AVX2 on amd64
-when the CPU reports it, and NEON on arm64. `BatchPath` returns `"scalar"`,
-`"avx2"`, or `"neon"` so a program can report which family it got. The
-`"neon"` family covers the `Q16` functions only; `BatchDot16` and
-`BatchQ48Mul16` run their scalar kernels on arm64 in every build.
-
-```sh
-GOEXPERIMENT=simd go build ./...
-```
-
-CI compares the result bits and saturation counts of the AVX2 and NEON kernels
-with the scalar kernels.
-
-## Architecture
-
-`fixed` is a leaf module. The portable files import only `math`, `math/bits`,
-and `sync/atomic`; files behind the `goexperiment.simd` build tag also use
-`unsafe` and `simd/archsimd`. Every `unsafe` operation lives in one file,
-`batch16_raw.go`, which only reinterprets a `Q16` or `Q32` slice as the raw
-words the vector loads take, under compile-time assertions on the layout. The
-`math` import provides hardware seeds; exact integer
-comparisons close every result, so floating point never decides a bit. This
-small dependency surface lets applications use the numeric type without
-importing unrelated systems.
-
-The `Q32` and `Q16` types are opaque. Their prefixed constructors make the
-chosen format explicit. Operations own saturation and rounding, and `Raw` is
-the boundary for exact bit access. Consumers that standardize on one format can
-define local aliases without imposing that choice on other users of the
-library.
-
-The module is one flat package by design. Every public type shares one
-contract, so subpackages would only split the documentation and add import
-noise. File names carry the layers: `q*`/`decimal*` for the scalar, `vec2*`
-and `rot*` for the plane, `trig*` for the kernel. Directories exist only for
-content outside the package interface: `internal/` for tools and `.github/`
-for CI.
-
-The Go implementation defines the bit-level contract. An independent
-implementation must preserve the rounding, saturation, and raw representation
-before it exchanges values with this package. A change to one of these rules is
-a semantic change, not an internal refactor.
+Raw representation, rounding, and saturation are part of the public contract.
+An independent implementation must preserve all three to exchange values
+reliably. Changing them is a compatibility change.
 
 ## Development
 
-Run the standard checks before submitting a change:
+Run the checks with:
 
 ```sh
 go test ./...
 go vet ./...
+go run ./internal/gentable -check
 golangci-lint run ./...
 ```
 
-The batch benchmarks separate steady-state throughput from edge cases. Use
-`BenchmarkBatchBoundaries` to inspect empty calls, vector-width crossings, and
-scalar tails. `BenchmarkBatchSaturation` compares workloads with no
-saturation, sparse saturation, and saturation in every element:
+The trigonometric tables and outputs between table entries have fixed bit
+checksums. `gentable -check` regenerates tables for comparison without changing
+the files; CI runs it on amd64. Updating the checksums requires an intentional
+compatibility change, even if the numerical error remains within tolerance.
+
+Batch benchmarks cover steady workloads, empty slices, vector boundaries,
+scalar tails, and different amounts of saturation:
 
 ```sh
 go test -run '^$' -bench '^BenchmarkBatch$' -benchmem ./...
 go test -run '^$' -bench '^BenchmarkBatch(Boundaries|Saturation)$' -benchmem ./...
 ```
 
-See the [package documentation](https://pkg.go.dev/github.com/dhannyell/fixed)
-for the API reference and the full behavioral contract.
+Their MB/s metric counts logical slice reads and writes, not physical memory
+traffic: 12 bytes per element for add/sub/mul and conversions, 8 for clamp and
+dot, and 20 for Q48Mul16. The dot result and benchmark result storage are
+excluded from that count.
 
 ## License
 
-`fixed` is available under the [MIT License](LICENSE).
+[MIT](LICENSE).
