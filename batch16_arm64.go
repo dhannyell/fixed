@@ -32,6 +32,9 @@ const neonFlushBlocks = 1 << 30
 // vecLaneSum adds the four lanes of a counter vector. The counter holds one
 // non-negative count per lane, so the sum cannot overflow.
 func vecLaneSum(count archsimd.Int32x4) uint64 {
+	if !SaturationCountingEnabled {
+		return 0
+	}
 	var events uint64
 	for lane := range 4 {
 		events += uint64(count.GetElem(uint8(lane)))
@@ -56,11 +59,13 @@ func add16NEON(dst, a, b []Q16) uint64 {
 		s := x.AddSaturated(y)
 		s.Store(rd[i:])
 		// A lane saturated exactly when the wrapping sum differs from it.
-		count = count.Sub(x.Add(y).NotEqual(s).ToInt32x4())
-		if blocks++; blocks == neonFlushBlocks {
-			events += vecLaneSum(count)
-			count = archsimd.BroadcastInt32x4(0)
-			blocks = 0
+		if SaturationCountingEnabled {
+			count = count.Sub(x.Add(y).NotEqual(s).ToInt32x4())
+			if blocks++; blocks == neonFlushBlocks {
+				events += vecLaneSum(count)
+				count = archsimd.BroadcastInt32x4(0)
+				blocks = 0
+			}
 		}
 	}
 	return events + vecLaneSum(count) + add16Scalar(dst[i:], a[i:], b[i:])
@@ -79,11 +84,13 @@ func sub16NEON(dst, a, b []Q16) uint64 {
 		y := archsimd.LoadInt32x4(rb[i:])
 		s := x.SubSaturated(y)
 		s.Store(rd[i:])
-		count = count.Sub(x.Sub(y).NotEqual(s).ToInt32x4())
-		if blocks++; blocks == neonFlushBlocks {
-			events += vecLaneSum(count)
-			count = archsimd.BroadcastInt32x4(0)
-			blocks = 0
+		if SaturationCountingEnabled {
+			count = count.Sub(x.Sub(y).NotEqual(s).ToInt32x4())
+			if blocks++; blocks == neonFlushBlocks {
+				events += vecLaneSum(count)
+				count = archsimd.BroadcastInt32x4(0)
+				blocks = 0
+			}
 		}
 	}
 	return events + vecLaneSum(count) + sub16Scalar(dst[i:], a[i:], b[i:])
@@ -114,6 +121,9 @@ func vecPackHalves(lo, hi archsimd.Int32x4) archsimd.Int32x4 {
 // Q16.16 grid and returns their four elements saturated to Q16, plus the
 // lanes that saturated as a vector of 0 and -1.
 func vecNarrowPairNEON(lo, hi archsimd.Int64x2) (archsimd.Int32x4, archsimd.Int32x4) {
+	if !SaturationCountingEnabled {
+		return vecPackHalves(lo.SaturateToInt32(), hi.SaturateToInt32()), archsimd.BroadcastInt32x4(0)
+	}
 	maxV := archsimd.BroadcastInt64x2(q16RawMax)
 	minV := archsimd.BroadcastInt64x2(q16RawMin)
 	loOvf := maxV.Less(lo).Or(lo.Less(minV)).ToInt64x2()
@@ -145,11 +155,13 @@ func mul16NEON(dst, a, b []Q16) uint64 {
 
 		r, o := vecNarrowPairNEON(lo, hi)
 		r.Store(rd[i:])
-		count = count.Sub(o)
-		if blocks++; blocks == neonFlushBlocks {
-			events += vecLaneSum(count)
-			count = archsimd.BroadcastInt32x4(0)
-			blocks = 0
+		if SaturationCountingEnabled {
+			count = count.Sub(o)
+			if blocks++; blocks == neonFlushBlocks {
+				events += vecLaneSum(count)
+				count = archsimd.BroadcastInt32x4(0)
+				blocks = 0
+			}
 		}
 	}
 	return events + vecLaneSum(count) + mul16Scalar(dst[i:], a[i:], b[i:])
@@ -185,11 +197,13 @@ func q16FromQ32NEON(dst []Q16, a []Q32) uint64 {
 
 		r, o := vecNarrowPairNEON(lo, hi)
 		r.Store(rd[i:])
-		count = count.Sub(o)
-		if blocks++; blocks == neonFlushBlocks {
-			events += vecLaneSum(count)
-			count = archsimd.BroadcastInt32x4(0)
-			blocks = 0
+		if SaturationCountingEnabled {
+			count = count.Sub(o)
+			if blocks++; blocks == neonFlushBlocks {
+				events += vecLaneSum(count)
+				count = archsimd.BroadcastInt32x4(0)
+				blocks = 0
+			}
 		}
 	}
 	return events + vecLaneSum(count) + q16FromQ32Scalar(dst[i:], a[i:])

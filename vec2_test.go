@@ -62,7 +62,7 @@ func TestVec2NormPreservesScale(t *testing.T) {
 		if got := v.Normalize(); got != c.unit {
 			t.Errorf("%s Normalize = %v, want %v", c.name, got, c.unit)
 		}
-		if got := fixed.SaturationCount(); got != c.saturations {
+		if got := fixed.SaturationCount(); got != expectedSaturations(c.saturations) {
 			t.Errorf("%s SaturationCount = %d, want %d", c.name, got, c.saturations)
 		}
 	}
@@ -82,8 +82,8 @@ func TestVec2SaturationPropagates(t *testing.T) {
 	if got := v.LenSq(); !got.Eq(fixed.Q32MaxValue()) {
 		t.Errorf("LenSq(2^20, 0) = %d, want MaxValue", got.Raw())
 	}
-	if got := fixed.SaturationCount(); got != 1 {
-		t.Errorf("SaturationCount = %d, want 1", got)
+	if got := fixed.SaturationCount(); got != expectedSaturations(1) {
+		t.Errorf("SaturationCount = %d, want %d", got, expectedSaturations(1))
 	}
 }
 

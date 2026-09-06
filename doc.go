@@ -13,6 +13,10 @@
 // An overflow saturates to the minimum or maximum of the selected format.
 // [SaturationCount] reports saturation events for diagnostics. The counter does
 // not affect fixed-point values or operation results.
+// Build with -tags=fixed_nosatcounter to remove diagnostic counting, including
+// local batch counts. In that build [SaturationCountingEnabled] is false,
+// [SaturationCount] returns zero and [ResetSaturationCount] is a no-op.
+// Saturation and rounding of numeric results are unchanged.
 //
 // Div panics for a zero divisor in every format. [Q32FromRatio],
 // [Q16FromRatio], and [Q48FromRatio] panic for a zero denominator. Sqrt panics

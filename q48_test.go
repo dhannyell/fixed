@@ -92,8 +92,8 @@ func TestQ48SaturationClampsAndCounts(t *testing.T) {
 			if got := c.op(); !got.Eq(c.want) {
 				t.Errorf("got %d, want %d", got.Raw(), c.want.Raw())
 			}
-			if n := fixed.SaturationCount(); n != 1 {
-				t.Errorf("SaturationCount = %d, want 1", n)
+			if n := fixed.SaturationCount(); n != expectedSaturations(1) {
+				t.Errorf("SaturationCount = %d, want %d", n, expectedSaturations(1))
 			}
 		})
 	}
@@ -116,8 +116,8 @@ func TestQ48FromIntSaturatesAtTheIntegerBounds(t *testing.T) {
 			if got := c.op(); !got.Eq(c.want) {
 				t.Errorf("got %d, want %d", got.Raw(), c.want.Raw())
 			}
-			if n := fixed.SaturationCount(); n != 1 {
-				t.Errorf("SaturationCount = %d, want 1", n)
+			if n := fixed.SaturationCount(); n != expectedSaturations(1) {
+				t.Errorf("SaturationCount = %d, want %d", n, expectedSaturations(1))
 			}
 		})
 	}

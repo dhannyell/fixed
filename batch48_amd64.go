@@ -49,6 +49,9 @@ func vecAddSat64(x, y archsimd.Int64x4) (archsimd.Int64x4, uint64) {
 	r := x.Add(y)
 	ovf := zero.Greater(x.Xor(r).And(y.Xor(r)))
 	sat := archsimd.BroadcastInt64x4(q48RawMin).IfElse(zero.Greater(x), archsimd.BroadcastInt64x4(q48RawMax))
+	if !SaturationCountingEnabled {
+		return sat.IfElse(ovf, r), 0
+	}
 	return sat.IfElse(ovf, r), uint64(bits.OnesCount8(ovf.ToBits()))
 }
 
@@ -68,7 +71,9 @@ func dot16AVX2(a, b []Q16) (Q48, uint64) {
 		var e0, e1 uint64
 		p0, e0 = vecAddSat64(p0, lo)
 		p1, e1 = vecAddSat64(p1, hi)
-		events += e0 + e1
+		if SaturationCountingEnabled {
+			events += e0 + e1
+		}
 	}
 	var partial [dot16Lanes]int64
 	p0.Store(partial[:4])
@@ -76,7 +81,7 @@ func dot16AVX2(a, b []Q16) (Q48, uint64) {
 	for j := i; j < len(a); j++ {
 		p := (int64(a[j].raw) * int64(b[j].raw)) >> 16
 		r, ovf := q48AddSat(partial[j%dot16Lanes], p)
-		if ovf {
+		if SaturationCountingEnabled && ovf {
 			events++
 		}
 		partial[j%dot16Lanes] = r
@@ -122,7 +127,10 @@ func q48Mul16AVX2(dst, q []Q48, f []Q16) uint64 {
 		r0, t0 := vecMul16Parts(archsimd.LoadInt64x4(rq[i:]), x)
 		r1, t1 := vecMul16Parts(archsimd.LoadInt64x4(rq[i+4:]), xOdd)
 		if vecOutside47(t0).Or(vecOutside47(t1)).ToBits() != 0 {
-			events += q48Mul16Scalar(dst[i:i+lanes], q[i:i+lanes], f[i:i+lanes])
+			e := q48Mul16Scalar(dst[i:i+lanes], q[i:i+lanes], f[i:i+lanes])
+			if SaturationCountingEnabled {
+				events += e
+			}
 			continue
 		}
 		r0.Store(rd[i:])

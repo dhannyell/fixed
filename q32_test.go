@@ -117,8 +117,8 @@ func TestSaturationClampsAndCounts(t *testing.T) {
 			if got := c.op(); !got.Eq(c.want) {
 				t.Errorf("result = %d, want %d", got.Raw(), c.want.Raw())
 			}
-			if got := fixed.SaturationCount(); got != 1 {
-				t.Errorf("SaturationCount = %d, want 1", got)
+			if got := fixed.SaturationCount(); got != expectedSaturations(1) {
+				t.Errorf("SaturationCount = %d, want %d", got, expectedSaturations(1))
 			}
 		})
 	}
@@ -393,4 +393,13 @@ func FuzzSqrtVsBig(f *testing.F) {
 			t.Errorf("Sqrt(%d) = %d, oracle says %d", a, got, want)
 		}
 	})
+}
+
+// expectedSaturations is the count a test expects when the build records
+// saturation events, and zero under fixed_nosatcounter.
+func expectedSaturations(n uint64) uint64 {
+	if !fixed.SaturationCountingEnabled {
+		return 0
+	}
+	return n
 }

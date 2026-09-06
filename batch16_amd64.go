@@ -48,6 +48,9 @@ func vecAddSat(x, y archsimd.Int32x8) (archsimd.Int32x8, uint64) {
 	// Shifting by 31 gives 0 for x>=0 and -1 for x<0, so the xor picks
 	// q16RawMax on the high side and q16RawMin on the low side.
 	sat := x.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
+	if !SaturationCountingEnabled {
+		return sat.IfElse(ovf, r), 0
+	}
 	return sat.IfElse(ovf, r), uint64(bits.OnesCount8(ovf.ToBits()))
 }
 
@@ -58,6 +61,9 @@ func vecSubSat(x, y archsimd.Int32x8) (archsimd.Int32x8, uint64) {
 	r := x.Sub(y)
 	ovf := x.Xor(y).And(x.Xor(r)).Less(archsimd.BroadcastInt32x8(0))
 	sat := x.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
+	if !SaturationCountingEnabled {
+		return sat.IfElse(ovf, r), 0
+	}
 	return sat.IfElse(ovf, r), uint64(bits.OnesCount8(ovf.ToBits()))
 }
 
@@ -80,6 +86,9 @@ func vecNarrowPair(te, to archsimd.Uint64x4) (archsimd.Int32x8, uint64) {
 	// Shifting by 31 gives 0 for a positive product and -1 for a negative one,
 	// so the xor picks q16RawMax on the high side and q16RawMin on the low.
 	sat := sext.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
+	if !SaturationCountingEnabled {
+		return sat.IfElse(ovf, cand), 0
+	}
 	return sat.IfElse(ovf, cand), uint64(bits.OnesCount8(ovf.ToBits()))
 }
 
@@ -91,7 +100,9 @@ func add16AVX2(dst, a, b []Q16) uint64 {
 	for ; i+lanes <= len(ra); i += lanes {
 		r, e := vecAddSat(archsimd.LoadInt32x8(ra[i:]), archsimd.LoadInt32x8(rb[i:]))
 		r.Store(rd[i:])
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 	}
 	return events + add16Scalar(dst[i:], a[i:], b[i:])
 }
@@ -104,7 +115,9 @@ func sub16AVX2(dst, a, b []Q16) uint64 {
 	for ; i+lanes <= len(ra); i += lanes {
 		r, e := vecSubSat(archsimd.LoadInt32x8(ra[i:]), archsimd.LoadInt32x8(rb[i:]))
 		r.Store(rd[i:])
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 	}
 	return events + sub16Scalar(dst[i:], a[i:], b[i:])
 }
@@ -126,7 +139,9 @@ func mul16AVX2(dst, a, b []Q16) uint64 {
 
 		r, e := vecNarrowPair(te, to)
 		r.Store(rd[i:])
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 	}
 	return events + mul16Scalar(dst[i:], a[i:], b[i:])
 }
@@ -175,7 +190,9 @@ func q16FromQ32AVX2(dst []Q16, a []Q32) uint64 {
 		to := archsimd.LoadInt64x4(ra[i+4:]).AsUint64x4().ShiftAllRight(16)
 		r, e := vecNarrowPair(te, to)
 		r.Permute(order).Store(rd[i:])
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 	}
 	return events + q16FromQ32Scalar(dst[i:], a[i:])
 }
