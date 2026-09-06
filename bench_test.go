@@ -44,9 +44,10 @@ func BenchmarkAtan2Turns(b *testing.B) {
 	benchSinkQ32 = acc
 }
 
-// Throughput benchmarks accumulate into a sink, so iterations overlap in
-// the pipeline. Latency benchmarks feed each result into the next call and
-// measure the dependent cost one caller pays. Do not compare the two.
+// The legacy Throughput benchmarks below include a serial result reduction
+// and input generation. The README uses BenchmarkCompare for independent-input
+// measurements. Latency benchmarks feed each result into the next call; any
+// companion operations used to keep that chain in range are timed too.
 
 func BenchmarkQ32AddThroughput(b *testing.B) {
 	step := fixed.Q32FromRaw(1)

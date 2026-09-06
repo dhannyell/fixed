@@ -5,6 +5,8 @@
 package main
 
 import (
+	"bytes"
+	"flag"
 	"fmt"
 	"math/big"
 	"os"
@@ -21,6 +23,25 @@ const prec = 200
 const piDigits = "3.141592653589793238462643383279502884197169399375105820974944592307816406286208998628034825342117068"
 
 func main() {
+	check := flag.Bool("check", false, "check committed tables without writing them")
+	flag.Parse()
+	data := generateTables()
+	if *check {
+		existing, err := os.ReadFile("trig_table.go")
+		if err != nil {
+			panic(err)
+		}
+		if !bytes.Equal(bytes.ReplaceAll(existing, []byte("\r\n"), []byte("\n")), data) {
+			panic("fixed: trig_table.go differs from generated tables")
+		}
+		return
+	}
+	if err := os.WriteFile("trig_table.go", data, 0o644); err != nil {
+		panic(err)
+	}
+}
+
+func generateTables() []byte {
 	pi, _, err := big.ParseFloat(piDigits, 10, prec, big.ToNearestEven)
 	if err != nil {
 		panic(err)
@@ -63,9 +84,7 @@ func main() {
 	}
 	b.WriteString("}\n")
 
-	if err := os.WriteFile("trig_table.go", []byte(b.String()), 0o644); err != nil {
-		panic(err)
-	}
+	return []byte(b.String())
 }
 
 // bigAtan evaluates arctangent. Ten argument halvings via

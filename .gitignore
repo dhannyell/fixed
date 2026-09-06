@@ -30,3 +30,9 @@ go.work.sum
 # Editor/IDE
 .idea/
 .vscode/
+
+# Local notes, benchmark dumps and build artifacts
+plans/
+*.wasm
+.batch48-*.txt
+.probe48-*.txt

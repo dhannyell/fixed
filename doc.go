@@ -13,6 +13,10 @@
 // An overflow saturates to the minimum or maximum of the selected format.
 // [SaturationCount] reports saturation events for diagnostics. The counter does
 // not affect fixed-point values or operation results.
+// Build with -tags=fixed_nosatcounter to remove diagnostic counting, including
+// local batch counts. In that build [SaturationCountingEnabled] is false,
+// [SaturationCount] returns zero and [ResetSaturationCount] is a no-op.
+// Saturation and rounding of numeric results are unchanged.
 //
 // Div panics for a zero divisor in every format. [Q32FromRatio],
 // [Q16FromRatio], and [Q48FromRatio] panic for a zero denominator. Sqrt panics
@@ -85,8 +89,9 @@
 // quarter-wave table. Table entries round to nearest, and linear interpolation
 // floors. The maximum absolute error is 2⁻²⁰.
 //
-// [Atan2Turns] returns an angle in (-1/2, 1/2] turns. It reduces the input to a
-// ratio in [0, 1], truncates that ratio to Q32.32, and uses a 1024-interval
+// [Atan2Turns] returns an angle in [-1/2, 1/2] turns. The negative x axis
+// returns +1/2; quantization just below it can return -1/2. It reduces the
+// input to a ratio in [0, 1], truncates it to Q32.32, and uses a 1024-interval
 // table. Table entries round to nearest, and linear interpolation floors.
 // Octant reconstruction is exact.
 //
@@ -97,6 +102,8 @@
 // 128-bit intermediate and saturates only when the final length is out of
 // range. [Vec2.Normalize] scales the components before it squares them, so
 // intermediate underflow cannot turn a nonzero vector into the zero vector.
+// [Vec2.Lerp] composes Sub, Mul, and Add, including intermediate saturation.
+// Keep those intermediates in range to preserve the interpolation endpoints.
 //
 // [Rot] stores a rotation as its sine and cosine. The zero Rot is invalid. Use
 // [RotIdentity] or [RotFromTurns] to construct a rotation. Repeated composition

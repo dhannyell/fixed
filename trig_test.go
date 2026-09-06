@@ -104,6 +104,8 @@ func TestAtan2TurnsGoldenBits(t *testing.T) {
 		{"+x axis", fixed.Atan2Turns(fixed.Q32Zero(), one), fixed.Q32Zero()},
 		{"+y axis", fixed.Atan2Turns(one, fixed.Q32Zero()), fixed.Q32FromRatio(1, 4)},
 		{"-x axis", fixed.Atan2Turns(fixed.Q32Zero(), one.Neg()), fixed.Q32Half()},
+		{"below -x axis", fixed.Atan2Turns(fixed.Q32FromRaw(-1), fixed.Q32MinValue()), fixed.Q32Half().Neg()},
+		{"above -x axis", fixed.Atan2Turns(fixed.Q32FromRaw(1), fixed.Q32MinValue()), fixed.Q32Half()},
 		{"-y axis", fixed.Atan2Turns(one.Neg(), fixed.Q32Zero()), fixed.Q32FromRatio(-1, 4)},
 		{"diag 1/8", fixed.Atan2Turns(one, one), fixed.Q32FromRatio(1, 8)},
 		{"diag 3/8", fixed.Atan2Turns(one, one.Neg()), fixed.Q32FromRatio(3, 8)},
@@ -127,6 +129,9 @@ func TestAtan2TurnsMeetsTheFloor(t *testing.T) {
 			return
 		}
 		got := float64(fixed.Atan2Turns(fixed.Q32FromRaw(yr), fixed.Q32FromRaw(xr)).Raw()) * 0x1p-32
+		if got < -0.5 || got > 0.5 {
+			t.Fatalf("Atan2Turns(%d, %d) = %g outside [-1/2, 1/2]", yr, xr, got)
+		}
 		want := math.Atan2(float64(yr), float64(xr)) / (2 * math.Pi)
 		d := got - want
 		if d > 0.5 {

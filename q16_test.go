@@ -87,8 +87,8 @@ func TestQ16SaturationClampsAndCounts(t *testing.T) {
 			if got := c.op(); !got.Eq(c.want) {
 				t.Errorf("result = %d, want %d", got.Raw(), c.want.Raw())
 			}
-			if got := fixed.SaturationCount(); got != 1 {
-				t.Errorf("SaturationCount = %d, want 1", got)
+			if got := fixed.SaturationCount(); got != expectedSaturations(1) {
+				t.Errorf("SaturationCount = %d, want %d", got, expectedSaturations(1))
 			}
 		})
 	}

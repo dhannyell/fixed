@@ -66,7 +66,9 @@ func (v Vec2) DistanceSq(o Vec2) Q32 {
 }
 
 // Lerp linearly interpolates between v and target by t. t is not
-// clamped.
+// clamped. Sub, Mul, and Add each apply their scalar saturation rules.
+// Intermediate saturation can change the endpoint at t=1 and is counted
+// even at t=0. Keep the intermediates in range when endpoints must be exact.
 func (v Vec2) Lerp(target Vec2, t Q32) Vec2 {
 	return v.Add(target.Sub(v).Mul(t))
 }
@@ -95,10 +97,16 @@ func unitPair(x, y int64) (Q32, Q32) {
 		sy = Q32{raw: signedUnit(y < 0)}
 	case mx > my:
 		sx = Q32{raw: signedUnit(x < 0)}
+		if my == 0 {
+			return sx, Q32{}
+		}
 		sy = divMag(my, scale, y < 0)
 	default:
-		sx = divMag(mx, scale, x < 0)
+		if mx == 0 {
+			return Q32{}, Q32{raw: signedUnit(y < 0)}
+		}
 		sy = Q32{raw: signedUnit(y < 0)}
+		sx = divMag(mx, scale, x < 0)
 	}
 	n := sx.Mul(sx).Add(sy.Mul(sy)).Sqrt()
 	if n.raw == q32RawOne {

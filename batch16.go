@@ -120,7 +120,9 @@ func add16Scalar(dst, a, b []Q16) uint64 {
 		r := int32(v)
 		if int64(r) != v {
 			r = q16SaturateWide(v)
-			events++
+			if SaturationCountingEnabled {
+				events++
+			}
 		}
 		dst[i] = Q16{raw: r}
 	}
@@ -136,7 +138,9 @@ func sub16Scalar(dst, a, b []Q16) uint64 {
 		r := int32(v)
 		if int64(r) != v {
 			r = q16SaturateWide(v)
-			events++
+			if SaturationCountingEnabled {
+				events++
+			}
 		}
 		dst[i] = Q16{raw: r}
 	}
@@ -152,7 +156,9 @@ func mul16Scalar(dst, a, b []Q16) uint64 {
 		r := int32(v)
 		if int64(r) != v {
 			r = q16SaturateWide(v)
-			events++
+			if SaturationCountingEnabled {
+				events++
+			}
 		}
 		dst[i] = Q16{raw: r}
 	}
@@ -194,7 +200,9 @@ func q16FromQ32Scalar(dst []Q16, a []Q32) uint64 {
 		r := int32(v)
 		if int64(r) != v {
 			r = q16SaturateWide(v)
-			events++
+			if SaturationCountingEnabled {
+				events++
+			}
 		}
 		dst[i] = Q16{raw: r}
 	}

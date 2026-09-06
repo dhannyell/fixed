@@ -58,7 +58,7 @@ func TestBatchDot16KernelsMatchTheCanonicalOrder(t *testing.T) {
 			}
 		}
 	}
-	// The pair grid saturates; a plain run must not, and must equal the
+	// This short dot cannot saturate and must equal the
 	// per-call accumulator, which is the order a caller would write by hand.
 	x, y := benchInputs(169)
 	var acc Q48
@@ -70,6 +70,49 @@ func TestBatchDot16KernelsMatchTheCanonicalOrder(t *testing.T) {
 		if got != acc || events != 0 {
 			t.Fatalf("%s: unsaturated dot = %d (%d events), per-call says %d", k.name, got.raw, events, acc.raw)
 		}
+	}
+}
+
+func TestBatchDot16SaturationOrderAndCounts(t *testing.T) {
+	const product = int64(1) << 46 // MinQ16 * MinQ16, floored to Q48.
+	for _, c := range []struct {
+		name     string
+		n        int
+		negative func(int) bool
+		want     int64
+		events   uint64
+	}{
+		{"positive reduction", 1 << 17, nil, q48RawMax, 1},
+		{"negative reduction", 1<<17 + 8, func(int) bool { return true }, q48RawMin, 1},
+		{"partial and tail", 1<<20 + 3, nil, q48RawMax, 18},
+		{"negative partials", 1<<20 + 8, func(int) bool { return true }, q48RawMin, 15},
+		// The positive half of the tree saturates once before cancellation.
+		{"tree cancellation", 1 << 18, func(i int) bool { return i&7 >= 4 }, 1<<32 - 1, 1},
+		// Each partial saturates once, then receives 131071 negative products.
+		// MinQ16 * MaxQ16 has raw value -product + 2^15.
+		{"partial cancellation", (1<<18 - 1) * 8, func(i int) bool { return i >= 1<<20 },
+			8 * (product - 1 + (1<<17-1)*(1<<15)), 8},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			a, b := make([]Q16, c.n), make([]Q16, c.n)
+			for i := range a {
+				a[i], b[i] = Q16MinValue(), Q16MinValue()
+				if c.negative != nil && c.negative(i) {
+					b[i] = Q16MaxValue()
+				}
+			}
+			for _, k := range dot16Kernels {
+				got, events := k.fn(a, b)
+				if got.raw != c.want || events != expectedSaturations(c.events) {
+					t.Errorf("%s = (%d, %d events), want (%d, %d events)", k.name, got.raw, events, c.want, expectedSaturations(c.events))
+				}
+			}
+			before := SaturationCount()
+			got := BatchDot16(a, b)
+			if events := SaturationCount() - before; got.raw != c.want || events != expectedSaturations(c.events) {
+				t.Errorf("BatchDot16 = (%d, %d events), want (%d, %d events)", got.raw, events, c.want, expectedSaturations(c.events))
+			}
+		})
 	}
 }
 

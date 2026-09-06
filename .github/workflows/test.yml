@@ -42,6 +42,9 @@ jobs:
             printf 'Files need gofmt:\n%s\n' "$unformatted"
             exit 1
           fi
+      - name: Check trigonometric tables
+        if: matrix.goarch == 'amd64'
+        run: go run ./internal/gentable -check
       - name: Vet
         if: matrix.goarch == 'amd64'
         run: go vet ./...
@@ -50,6 +53,8 @@ jobs:
         run: echo "$(go env GOROOT)/lib/wasm" >> "$GITHUB_PATH"
       - name: Test
         run: go test ./...
+      - name: Test without saturation counting
+        run: go test -tags=fixed_nosatcounter ./...
 
   simd:
     name: simd (${{ matrix.goarch }})
@@ -82,6 +87,8 @@ jobs:
         run: go vet ./...
       - name: Test
         run: go test -count=1 ./...
+      - name: Test without saturation counting
+        run: go test -tags=fixed_nosatcounter -count=1 ./...
       - name: Fuzz smoke
         run: |
           for target in FuzzBatchAdd16VsScalar FuzzBatchMul16VsScalar FuzzBatchQ16FromQ32VsScalar FuzzBatchDot16VsScalar FuzzBatchQ48Mul16VsScalar; do

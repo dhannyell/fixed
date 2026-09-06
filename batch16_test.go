@@ -239,7 +239,7 @@ func TestBatchPublicWrappersPublishCounts(t *testing.T) {
 	}
 	narrow := make([]Q16, len(wide))
 	want = q16FromQ32Scalar(narrow, wide)
-	if want == 0 {
+	if SaturationCountingEnabled && want == 0 {
 		t.Fatal("the conversion grid must saturate at least once")
 	}
 	ResetSaturationCount()
@@ -483,4 +483,13 @@ func FuzzBatchQ16FromQ32VsScalar(f *testing.F) {
 			}
 		}
 	})
+}
+
+// expectedSaturations is the count a test expects when the build records
+// saturation events, and zero under fixed_nosatcounter.
+func expectedSaturations(n uint64) uint64 {
+	if !SaturationCountingEnabled {
+		return 0
+	}
+	return n
 }

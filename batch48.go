@@ -58,34 +58,52 @@ func dot16Scalar(a, b []Q16) (Q48, uint64) {
 	for ; i+dot16Lanes <= len(a); i += dot16Lanes {
 		var e uint64
 		partial[0], e = dot16Accumulate(partial[0], a[i].raw, b[i].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[1], e = dot16Accumulate(partial[1], a[i+1].raw, b[i+1].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[2], e = dot16Accumulate(partial[2], a[i+2].raw, b[i+2].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[3], e = dot16Accumulate(partial[3], a[i+3].raw, b[i+3].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[4], e = dot16Accumulate(partial[4], a[i+4].raw, b[i+4].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[5], e = dot16Accumulate(partial[5], a[i+5].raw, b[i+5].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[6], e = dot16Accumulate(partial[6], a[i+6].raw, b[i+6].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 		partial[7], e = dot16Accumulate(partial[7], a[i+7].raw, b[i+7].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 	}
 	for ; i < len(a); i++ {
 		var e uint64
 		lane := i & (dot16Lanes - 1)
 		partial[lane], e = dot16Accumulate(partial[lane], a[i].raw, b[i].raw)
-		events += e
+		if SaturationCountingEnabled {
+			events += e
+		}
 	}
 	return dot16Reduce(partial, &events), events
 }
 
 func dot16Accumulate(sum int64, a, b int32) (int64, uint64) {
 	r, ovf := q48AddSat(sum, (int64(a)*int64(b))>>16)
-	if ovf {
+	if SaturationCountingEnabled && ovf {
 		return r, 1
 	}
 	return r, 0
@@ -95,25 +113,39 @@ func dot16Accumulate(sum int64, a, b int32) (int64, uint64) {
 func dot16Reduce(p [dot16Lanes]int64, events *uint64) Q48 {
 	var e uint64
 	p[0], e = dot16Add(p[0], p[1])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	p[1], e = dot16Add(p[2], p[3])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	p[2], e = dot16Add(p[4], p[5])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	p[3], e = dot16Add(p[6], p[7])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	p[0], e = dot16Add(p[0], p[1])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	p[1], e = dot16Add(p[2], p[3])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	p[0], e = dot16Add(p[0], p[1])
-	*events += e
+	if SaturationCountingEnabled {
+		*events += e
+	}
 	return Q48{raw: p[0]}
 }
 
 func dot16Add(x, y int64) (int64, uint64) {
 	r, ovf := q48AddSat(x, y)
-	if ovf {
+	if SaturationCountingEnabled && ovf {
 		return r, 1
 	}
 	return r, 0
@@ -142,7 +174,7 @@ func q48Mul16Scalar(dst, q []Q48, f []Q16) uint64 {
 	var events uint64
 	for i := range q {
 		r, ovf := q48Mul16Raw(q[i].raw, f[i].raw)
-		if ovf {
+		if SaturationCountingEnabled && ovf {
 			events++
 		}
 		dst[i] = Q48{raw: r}
