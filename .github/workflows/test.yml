@@ -42,6 +42,9 @@ jobs:
             printf 'Files need gofmt:\n%s\n' "$unformatted"
             exit 1
           fi
+      - name: Check trigonometric tables
+        if: matrix.goarch == 'amd64'
+        run: go run ./internal/gentable -check
       - name: Vet
         if: matrix.goarch == 'amd64'
         run: go vet ./...
