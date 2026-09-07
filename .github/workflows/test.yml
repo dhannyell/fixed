@@ -82,7 +82,7 @@ jobs:
           # vector kernels were written against.
           go-version: "1.27.0"
       - name: Path
-        run: go test -count=1 -run 'BatchPath' -v ./...
+        run: go test -count=1 -run 'BatchPath|LanePath' -v ./...
       - name: Vet
         run: go vet ./...
       - name: Test
@@ -91,6 +91,6 @@ jobs:
         run: go test -tags=fixed_nosatcounter -count=1 ./...
       - name: Fuzz smoke
         run: |
-          for target in FuzzBatchAdd16VsScalar FuzzBatchMul16VsScalar FuzzBatchQ16FromQ32VsScalar FuzzBatchDot16VsScalar FuzzBatchQ48Mul16VsScalar; do
+          for target in FuzzBatchAdd16VsScalar FuzzBatchMul16VsScalar FuzzBatchQ16FromQ32VsScalar FuzzBatchDot16VsScalar FuzzBatchQ48Mul16VsScalar FuzzLane16VsScalar FuzzLane48VsScalar; do
             go test -run '^$' -fuzz "^${target}\$" -fuzztime 20s . || exit 1
           done
