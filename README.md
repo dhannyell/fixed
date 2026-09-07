@@ -269,6 +269,37 @@ Q16 arithmetic and conversion functions; `BatchDot16` and `BatchQ48Mul16`
 remain scalar on arm64. CI checks that vector kernels preserve the scalar
 results and saturation counts.
 
+## Lanes
+
+The lane API keeps a fixed number of independent values together while a
+calculation is in progress. Load an array or splat one value, compose lane
+operations, then store the result:
+
+```go
+var a, b, dst [fixed.LaneWidth]fixed.Q16
+
+la := fixed.LoadLane16(&a)
+lb := fixed.LoadLane16(&b)
+bias := fixed.SplatLane16(fixed.Q16Half())
+la.Mul(lb).Add(bias).Store(&dst)
+```
+
+`LaneWidth` is 8 for the AVX2 path and 4 for the NEON and generic paths.
+`LanePath()` reports `"avx2"`, `"neon"`, or `"generic"`. In an amd64 SIMD
+build, check `LanesAvailable()` before using the lane API; it reports false on
+a CPU without AVX2, where calling lane operations is undefined.
+
+| Type | Operations |
+| --- | --- |
+| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
+| `Mask16` | `Or`, `AllZero`, `BlendLane16` |
+| `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `MulAdd16`, `ToLane16` |
+
+`MulAdd` and `MulSub` perform two ordered operations rather than a fused
+operation. Lane multiplication rounds down, and every operation follows its
+scalar Q16 or Q48 saturation rules. The AVX2, NEON, and generic paths produce
+identical result bits and saturation counts.
+
 ## Performance
 
 Performance depends on how the operations are used. The tables below separate
