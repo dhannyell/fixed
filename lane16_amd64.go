@@ -29,31 +29,31 @@ func recordLaneSaturations(events uint64) {
 }
 
 func splatLane16(q Q16) Lane16 {
-	return Lane16(archsimd.BroadcastInt32x8(q.raw))
+	return Lane16{archsimd.BroadcastInt32x8(q.raw)}
 }
 
 func loadLane16(p *[LaneWidth]Q16) Lane16 {
-	return Lane16(archsimd.LoadInt32x8(rawInt32(p[:])))
+	return Lane16{archsimd.LoadInt32x8(rawInt32(p[:]))}
 }
 
 func storeLane16(a Lane16, p *[LaneWidth]Q16) {
-	archsimd.Int32x8(a).Store(rawInt32(p[:]))
+	a.v.Store(rawInt32(p[:]))
 }
 
 func addLane16(a, b Lane16) Lane16 {
-	r, events := vecAddSat(archsimd.Int32x8(a), archsimd.Int32x8(b))
+	r, events := vecAddSat(a.v, b.v)
 	recordLaneSaturations(events)
-	return Lane16(r)
+	return Lane16{r}
 }
 
 func subLane16(a, b Lane16) Lane16 {
-	r, events := vecSubSat(archsimd.Int32x8(a), archsimd.Int32x8(b))
+	r, events := vecSubSat(a.v, b.v)
 	recordLaneSaturations(events)
-	return Lane16(r)
+	return Lane16{r}
 }
 
 func mulLane16(a, b Lane16) Lane16 {
-	x, y := archsimd.Int32x8(a), archsimd.Int32x8(b)
+	x, y := a.v, b.v
 	// MulWidenEven reads the even lanes; shifting each 64-bit pair exposes
 	// the odd lanes for the second pass.
 	aOdd := x.AsUint64x4().ShiftAllRight(32).AsInt32x8()
@@ -62,76 +62,76 @@ func mulLane16(a, b Lane16) Lane16 {
 	odd := aOdd.MulWidenEven(bOdd).AsUint64x4().ShiftAllRight(16)
 	r, events := vecNarrowPair(even, odd)
 	recordLaneSaturations(events)
-	return Lane16(r)
+	return Lane16{r}
 }
 
 func minLane16(a, b Lane16) Lane16 {
-	return Lane16(archsimd.Int32x8(a).Min(archsimd.Int32x8(b)))
+	return Lane16{a.v.Min(b.v)}
 }
 
 func maxLane16(a, b Lane16) Lane16 {
-	return Lane16(archsimd.Int32x8(a).Max(archsimd.Int32x8(b)))
+	return Lane16{a.v.Max(b.v)}
 }
 
 func symClampLane16(a, limit Lane16) Lane16 {
-	x, hi := archsimd.Int32x8(a), archsimd.Int32x8(limit)
+	x, hi := a.v, limit.v
 	neg, events := vecSubSat(archsimd.BroadcastInt32x8(0), hi)
 	recordLaneSaturations(events)
-	return Lane16(x.Min(hi).Max(neg))
+	return Lane16{x.Min(hi).Max(neg)}
 }
 
 func greaterLane16(a, b Lane16) Mask16 {
-	return Mask16(archsimd.Int32x8(a).Greater(archsimd.Int32x8(b)))
+	return Mask16{a.v.Greater(b.v)}
 }
 
 func equalsLane16(a, b Lane16) Mask16 {
-	return Mask16(archsimd.Int32x8(a).Equal(archsimd.Int32x8(b)))
+	return Mask16{a.v.Equal(b.v)}
 }
 
 func orMask16(m, n Mask16) Mask16 {
-	return Mask16(archsimd.Mask32x8(m).Or(archsimd.Mask32x8(n)))
+	return Mask16{m.v.Or(n.v)}
 }
 
-func allZeroMask16(m Mask16) bool { return archsimd.Mask32x8(m).ToBits() == 0 }
+func allZeroMask16(m Mask16) bool { return m.v.ToBits() == 0 }
 
 func blendLane16(m Mask16, a, b Lane16) Lane16 {
-	return Lane16(archsimd.Int32x8(a).IfElse(archsimd.Mask32x8(m), archsimd.Int32x8(b)))
+	return Lane16{a.v.IfElse(m.v, b.v)}
 }
 
 func lane16ToLane48(a Lane16) Lane48 {
-	x := archsimd.Int32x8(a)
-	return Lane48(lane48Data{
+	x := a.v
+	return Lane48{lane48Data{
 		lo: x.GetLo().ExtendToInt64(),
 		hi: x.GetHi().ExtendToInt64(),
-	})
+	}}
 }
 
 func splatLane48(q Q48) Lane48 {
 	v := archsimd.BroadcastInt64x4(q.raw)
-	return Lane48(lane48Data{lo: v, hi: v})
+	return Lane48{lane48Data{lo: v, hi: v}}
 }
 
 func loadLane48(p *[LaneWidth]Q48) Lane48 {
 	raw := rawInt64Q48(p[:])
-	return Lane48(lane48Data{
+	return Lane48{lane48Data{
 		lo: archsimd.LoadInt64x4(raw[:4]),
 		hi: archsimd.LoadInt64x4(raw[4:]),
-	})
+	}}
 }
 
 func storeLane48(a Lane48, p *[LaneWidth]Q48) {
 	raw := rawInt64Q48(p[:])
-	x := lane48Data(a)
+	x := a.v
 	x.lo.Store(raw[:4])
 	x.hi.Store(raw[4:])
 }
 
 func addLane48(a, b Lane48) Lane48 {
-	x, y := lane48Data(a), lane48Data(b)
+	x, y := a.v, b.v
 	lo, loEvents := vecAddSat64(x.lo, y.lo)
 	hi, hiEvents := vecAddSat64(x.hi, y.hi)
 	recordLaneSaturations(loEvents + hiEvents)
-	return Lane48(lane48Data{lo: lo, hi: hi})
+	return Lane48{lane48Data{lo: lo, hi: hi}}
 }
 
 // laneSubSat64 subtracts with Q48 saturation. Overflow is read from the sign
@@ -149,21 +149,21 @@ func laneSubSat64(x, y archsimd.Int64x4) (archsimd.Int64x4, uint64) {
 }
 
 func subLane48(a, b Lane48) Lane48 {
-	x, y := lane48Data(a), lane48Data(b)
+	x, y := a.v, b.v
 	lo, loEvents := laneSubSat64(x.lo, y.lo)
 	hi, hiEvents := laneSubSat64(x.hi, y.hi)
 	recordLaneSaturations(loEvents + hiEvents)
-	return Lane48(lane48Data{lo: lo, hi: hi})
+	return Lane48{lane48Data{lo: lo, hi: hi}}
 }
 
 func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
-	acc := lane48Data(a)
+	acc := a.v
 	order := archsimd.LoadUint32x8Array(&q48SplitOrder)
-	productLo, productHi := vecProducts48(archsimd.Int32x8(b), archsimd.Int32x8(c), order)
+	productLo, productHi := vecProducts48(b.v, c.v, order)
 	lo, loEvents := vecAddSat64(acc.lo, productLo)
 	hi, hiEvents := vecAddSat64(acc.hi, productHi)
 	recordLaneSaturations(loEvents + hiEvents)
-	return Lane48(lane48Data{lo: lo, hi: hi})
+	return Lane48{lane48Data{lo: lo, hi: hi}}
 }
 
 // laneNarrowQ48 packs the low words and checks that each discarded high word
@@ -183,9 +183,9 @@ func laneNarrowQ48(lo, hi archsimd.Int64x4) (archsimd.Int32x8, uint64) {
 }
 
 func lane48ToLane16(a Lane48) Lane16 {
-	x := lane48Data(a)
+	x := a.v
 	r, events := laneNarrowQ48(x.lo, x.hi)
 	order := archsimd.LoadUint32x8Array(&q16NarrowOrder)
 	recordLaneSaturations(events)
-	return Lane16(r.Permute(order))
+	return Lane16{r.Permute(order)}
 }

@@ -9,16 +9,22 @@ package fixed
 //
 // In an amd64 SIMD build, callers must check LanesAvailable before constructing
 // or using a Lane16. Calling a lane operation without AVX2 is undefined.
-type Lane16 lane16Data
+//
+// The value is opaque: use the methods; the layout differs by path.
+type Lane16 struct{ v lane16Data }
 
 // Mask16 holds LaneWidth comparison results. Each lane is all ones when set
 // and all zeros when clear.
-type Mask16 mask16Data
+//
+// The value is opaque: use the methods; the layout differs by path.
+type Mask16 struct{ v mask16Data }
 
 // Lane48 holds LaneWidth Q48 values for register-resident accumulation. Its
 // methods produce the same bits and saturation events as the corresponding
 // scalar Q48 operations applied LaneWidth times.
-type Lane48 lane48Data
+//
+// The value is opaque: use the methods; the layout differs by path.
+type Lane48 struct{ v lane48Data }
 
 // LanesAvailable reports whether lane operations may be called. It is false
 // only in an amd64 SIMD build on a CPU without AVX2. Calling any lane operation
