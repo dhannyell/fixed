@@ -15,6 +15,8 @@ change before the first stable release.
 go get github.com/dhannyell/fixed
 ```
 
+This lib has a WGSL version that reproduces the same bits as the GO version on GPU [fixed-wgsl](https://github.com/dhannyell/fixed-wgsl).
+
 ## Getting started
 
 Construct values from integers, ratios, decimal strings, or raw bits. Methods
