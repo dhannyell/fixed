@@ -96,17 +96,17 @@ fixed.Q48MustParse(q48.String()) == q48
 ## Rounding and overflow
 
 Overflow clamps a result to the format's minimum or maximum value. This is
-called *saturation*. Each saturation increments the process-wide atomic
-`SaturationCount` counter, which you can use for diagnostics without affecting
-the calculation.
+called *saturation*. A build with the `fixed_satcounter` tag also increments
+the process-wide `SaturationCount` counter, which you can use for diagnostics
+without affecting the calculation.
 
-### Disabling the saturation counter
+### Enabling the saturation counter
 
-Counting is enabled by default for diagnostics. For production builds, use
-the `fixed_nosatcounter` build tag to remove it at compile time:
+Counting is off by default. Add the `fixed_satcounter` build tag when you want
+the diagnostic counter:
 
 ```sh
-go build -tags=fixed_nosatcounter ./...
+go build -tags=fixed_satcounter ./...
 ```
 
 The same tag works for WebAssembly. In PowerShell:
@@ -114,34 +114,38 @@ The same tag works for WebAssembly. In PowerShell:
 ```powershell
 $env:GOOS = "js"
 $env:GOARCH = "wasm"
-go build -tags=fixed_nosatcounter ./...
+go build -tags=fixed_satcounter ./...
 ```
 
-Overflow still clamps to the same limits and every numeric result keeps the
-same bits. The flag removes diagnostic increments, atomic counter access, and
-local event counting in batch kernels. It does not remove the checks needed
-to saturate arithmetic. There is no runtime switch to check on each operation.
+Overflow clamps to the same limits and every numeric result keeps the same
+bits either way. The tag adds diagnostic increments, counter access, and local
+event counting in batch kernels. The checks that saturate arithmetic are
+always present. There is no runtime switch to check on each operation.
 
 On `js/wasm` and `wasip1` the counter is a plain variable rather than an
 atomic. Those targets run on one thread without asynchronous preemption, so
 an increment cannot be interrupted, and the atomic call would otherwise keep
 the scalar methods from inlining on WebAssembly.
 
-`SaturationCountingEnabled` is a compile-time constant. With the tag enabled,
-it is `false`, `SaturationCount()` always returns zero, and
-`ResetSaturationCount()` does nothing. Omit the tag in development to restore
-counting. You can combine it with `GOEXPERIMENT=simd`.
+`SaturationCountingEnabled` is a compile-time constant. Without the tag it is
+`false`, `SaturationCount()` always returns zero, and `ResetSaturationCount()`
+does nothing. You can combine the tag with `GOEXPERIMENT=simd`.
 
-To measure the effect on your target, run the same benchmark in both modes:
+Before v0.9.0 the counter was on by default and `fixed_nosatcounter` removed
+it. If you read `SaturationCount()`, add `fixed_satcounter`. If you passed
+`fixed_nosatcounter`, drop it; the new default already leaves the counter out.
+
+To measure what the counter costs on your target, run the same benchmark both
+ways:
 
 ```sh
 go test -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
-go test -tags=fixed_nosatcounter -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
+go test -tags=fixed_satcounter -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
 ```
 
 These tests include safe and saturating inputs. Scalar counting happens only
 when an operation saturates; batch kernels can also spend time collecting
-events locally. The benefit depends on the workload and target.
+events locally. The cost depends on the workload and target.
 
 ### Arithmetic rules
 

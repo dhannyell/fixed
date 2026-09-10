@@ -1,9 +1,9 @@
-//go:build (js || wasip1) && !fixed_nosatcounter
+//go:build (js || wasip1) && fixed_satcounter
 
 package fixed
 
 // SaturationCountingEnabled reports whether this build records saturation
-// events. Build with -tags=fixed_nosatcounter to disable diagnostic counting.
+// events. Build with -tags=fixed_satcounter to enable diagnostic counting.
 // Arithmetic still saturates and produces the same result bits in either mode.
 const SaturationCountingEnabled = true
 

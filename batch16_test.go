@@ -486,7 +486,7 @@ func FuzzBatchQ16FromQ32VsScalar(f *testing.F) {
 }
 
 // expectedSaturations is the count a test expects when the build records
-// saturation events, and zero under fixed_nosatcounter.
+// saturation events, and zero when the build leaves the counter out.
 func expectedSaturations(n uint64) uint64 {
 	if !SaturationCountingEnabled {
 		return 0

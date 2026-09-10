@@ -6,7 +6,7 @@ import (
 	"github.com/dhannyell/fixed"
 )
 
-// Run the same workloads with and without fixed_nosatcounter. Safe inputs
+// Run the same workloads with and without fixed_satcounter. Safe inputs
 // distinguish diagnostic overhead from the arithmetic needed to clamp results.
 func BenchmarkSaturationOverhead(b *testing.B) {
 	for _, saturating := range []bool{false, true} {

@@ -442,7 +442,7 @@ func FuzzSqrtVsBig(f *testing.F) {
 }
 
 // expectedSaturations is the count a test expects when the build records
-// saturation events, and zero under fixed_nosatcounter.
+// saturation events, and zero when the build leaves the counter out.
 func expectedSaturations(n uint64) uint64 {
 	if !fixed.SaturationCountingEnabled {
 		return 0

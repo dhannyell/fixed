@@ -1,9 +1,9 @@
-//go:build fixed_nosatcounter
+//go:build !fixed_satcounter
 
 package fixed
 
 // SaturationCountingEnabled reports whether this build records saturation
-// events. Build with -tags=fixed_nosatcounter to disable diagnostic counting.
+// events. Build with -tags=fixed_satcounter to enable diagnostic counting.
 // Arithmetic still saturates and produces the same result bits in either mode.
 const SaturationCountingEnabled = false
 
@@ -14,8 +14,8 @@ func (disabledSaturationCounter) Add(uint64) {}
 
 var saturationEvents disabledSaturationCounter
 
-// SaturationCount returns zero when built with fixed_nosatcounter.
+// SaturationCount returns zero unless the build enables counting.
 func SaturationCount() uint64 { return 0 }
 
-// ResetSaturationCount has no effect when built with fixed_nosatcounter.
+// ResetSaturationCount has no effect unless the build enables counting.
 func ResetSaturationCount() {}

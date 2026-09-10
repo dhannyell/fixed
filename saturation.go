@@ -1,11 +1,11 @@
-//go:build !fixed_nosatcounter && !js && !wasip1
+//go:build fixed_satcounter && !js && !wasip1
 
 package fixed
 
 import "sync/atomic"
 
 // SaturationCountingEnabled reports whether this build records saturation
-// events. Build with -tags=fixed_nosatcounter to disable diagnostic counting.
+// events. Build with -tags=fixed_satcounter to enable diagnostic counting.
 // Arithmetic still saturates and produces the same result bits in either mode.
 const SaturationCountingEnabled = true
 

@@ -13,8 +13,8 @@
 // An overflow saturates to the minimum or maximum of the selected format.
 // [SaturationCount] reports saturation events for diagnostics. The counter does
 // not affect fixed-point values or operation results.
-// Build with -tags=fixed_nosatcounter to remove diagnostic counting, including
-// local batch counts. In that build [SaturationCountingEnabled] is false,
+// Build with -tags=fixed_satcounter to add diagnostic counting, including local
+// batch counts. Without it [SaturationCountingEnabled] is false,
 // [SaturationCount] returns zero and [ResetSaturationCount] is a no-op.
 // Saturation and rounding of numeric results are unchanged.
 //
