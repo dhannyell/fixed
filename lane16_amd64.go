@@ -12,6 +12,7 @@ const LaneWidth = 8
 
 type lane16Data = archsimd.Int32x8
 type mask16Data = archsimd.Mask32x8
+type shift16Data = archsimd.Uint32x8
 
 type lane48Data struct {
 	lo archsimd.Int64x4
@@ -75,6 +76,37 @@ func mulRoundLane16(a, b Lane16) Lane16 {
 	r, events := vecNarrowPair(even, odd)
 	recordLaneSaturations(events)
 	return Lane16{r}
+}
+
+func splatShift16(n uint8) Shift16 {
+	return Shift16{archsimd.BroadcastUint32x8(uint32(n))}
+}
+
+func loadShift16(p *[LaneWidth]uint8) Shift16 {
+	var w [LaneWidth]uint32
+	for i := range LaneWidth {
+		w[i] = uint32(p[i])
+	}
+	return Shift16{archsimd.LoadUint32x8Array(&w)}
+}
+
+// scaleDownLane16 is one VPSRAVD. An arithmetic shift right cannot leave the
+// int32 range, so this path records no saturation event.
+func scaleDownLane16(a Lane16, s Shift16) Lane16 {
+	return Lane16{a.v.ShiftRight(s.v)}
+}
+
+// scaleDownRoundLane16 adds the bit below the truncation point to the shifted
+// value, which rounds half away from the floor.
+//
+// It reads that bit with a logical shift, and that makes an amount of zero fall
+// out on its own: the amount minus one wraps to a count past the lane width,
+// and VPSRLVD gives zero for such a count. An arithmetic shift would give the
+// sign bit there instead, and a negative value would round the wrong way.
+func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
+	ones := archsimd.BroadcastUint32x8(1)
+	half := a.v.AsUint32x8().ShiftRight(s.v.Sub(ones)).And(ones)
+	return Lane16{a.v.ShiftRight(s.v).Add(half.AsInt32x8())}
 }
 
 func minLane16(a, b Lane16) Lane16 {

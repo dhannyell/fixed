@@ -299,13 +299,20 @@ a CPU without AVX2, where calling lane operations is undefined.
 
 | Type | Operations |
 | --- | --- |
-| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulRound`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
+| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulRound`, `ScaleDown`, `ScaleDownRound`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
 | `Mask16` | `Or`, `AllZero`, `BlendLane16` |
+| `Shift16` | `SplatShift16`, `LoadShift16` |
 | `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `MulAdd16`, `MulAdd16Round`, `ToLane16` |
 
 `MulAdd` and `MulSub` perform two ordered operations rather than a fused
 operation. `Mul` and `MulAdd16` round down, while the `Round` forms take the
-nearest step. Every operation follows its scalar Q16 or Q48 saturation rules. The AVX2, NEON, and generic paths produce
+nearest step. Every operation follows its scalar Q16 or Q48 saturation rules.
+
+`ScaleDown` and `ScaleDownRound` divide by a power of two that each lane picks
+for itself, which a single instruction does on both SIMD paths. Up to an
+amount of 16 they give the same bits as `Mul` and `MulRound` by that power of
+two. Past 16 the divisor leaves the Q16 grid: the multiply gives zero, while
+the shift keeps going. An amount above 31 acts like 31. The AVX2, NEON, and generic paths produce
 identical result bits and saturation counts.
 
 ## Performance

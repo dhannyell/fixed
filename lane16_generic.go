@@ -7,6 +7,7 @@ const LaneWidth = 4
 
 type lane16Data [LaneWidth]int32
 type mask16Data [LaneWidth]int32
+type shift16Data [LaneWidth]uint8
 type lane48Data [LaneWidth]int64
 
 func lanesAvailable() bool { return true }
@@ -63,6 +64,37 @@ func mulRoundLane16(a, b Lane16) Lane16 {
 	var r Lane16
 	for i := range LaneWidth {
 		r.v[i] = Q16{raw: a.v[i]}.MulRound(Q16{raw: b.v[i]}).raw
+	}
+	return r
+}
+
+func splatShift16(n uint8) Shift16 {
+	var r Shift16
+	for i := range LaneWidth {
+		r.v[i] = n
+	}
+	return r
+}
+
+func loadShift16(p *[LaneWidth]uint8) Shift16 { return Shift16{*p} }
+
+func scaleDownLane16(a Lane16, s Shift16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] >> s.v[i]
+	}
+	return r
+}
+
+func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		n := s.v[i]
+		r.v[i] = a.v[i] >> n
+		// An amount of zero has no bit below the truncation point.
+		if n > 0 {
+			r.v[i] += (a.v[i] >> (n - 1)) & 1
+		}
 	}
 	return r
 }

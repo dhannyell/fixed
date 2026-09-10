@@ -9,6 +9,7 @@ const LaneWidth = 4
 
 type lane16Data = archsimd.Int32x4
 type mask16Data = archsimd.Mask32x4
+type shift16Data = archsimd.Int32x4
 
 type lane48Data struct {
 	lo archsimd.Int64x2
@@ -78,6 +79,42 @@ func mulRoundLane16(a, b Lane16) Lane16 {
 	zero := archsimd.BroadcastInt32x4(0)
 	recordLaneSaturations(vecLaneSum(zero.Sub(ovf)))
 	return Lane16{r}
+}
+
+// NEON has no dedicated per-lane right shift. VSSHL reads a signed amount from
+// the low byte of each lane: a positive amount shifts left, a negative amount
+// shifts right. So this path stores the negated amount. That puts the negation
+// in the constructors, which run once, and leaves the shift as one instruction.
+// A stored amount reaches -31 at most, which fits the low byte.
+
+func splatShift16(n uint8) Shift16 {
+	return Shift16{archsimd.BroadcastInt32x4(-int32(n))}
+}
+
+func loadShift16(p *[LaneWidth]uint8) Shift16 {
+	var w [LaneWidth]int32
+	for i := range LaneWidth {
+		w[i] = -int32(p[i])
+	}
+	return Shift16{archsimd.LoadInt32x4Array(&w)}
+}
+
+// scaleDownLane16 is one VSSHL. An arithmetic shift right cannot leave the
+// int32 range, so this path records no saturation event.
+func scaleDownLane16(a Lane16, s Shift16) Lane16 {
+	return Lane16{a.v.Shift(s.v)}
+}
+
+// scaleDownRoundLane16 adds the bit below the truncation point to the shifted
+// value, which rounds half away from the floor.
+//
+// This path stores the amount negated, so adding one to it reads one place
+// higher. An amount of zero turns into a left shift by one place, whose low bit
+// is zero, so it contributes nothing.
+func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
+	ones := archsimd.BroadcastInt32x4(1)
+	half := a.v.Shift(s.v.Add(ones)).And(ones)
+	return Lane16{a.v.Shift(s.v).Add(half)}
 }
 
 func minLane16(a, b Lane16) Lane16 {

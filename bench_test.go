@@ -241,6 +241,24 @@ func BenchmarkLane16Mul(b *testing.B) {
 		}
 		r.Store(&sink)
 	})
+	b.Run("scaledown", func(b *testing.B) {
+		// The same dependent chain with a power-of-two factor. It says what a
+		// descale costs when the caller can express it as an amount.
+		shift := fixed.SplatShift16(1)
+		r := x
+		for range b.N {
+			r = r.ScaleDown(shift)
+		}
+		r.Store(&sink)
+	})
+	b.Run("scaledownround", func(b *testing.B) {
+		shift := fixed.SplatShift16(1)
+		r := x
+		for range b.N {
+			r = r.ScaleDownRound(shift)
+		}
+		r.Store(&sink)
+	})
 	b.Run("round", func(b *testing.B) {
 		r := x
 		for range b.N {

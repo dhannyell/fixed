@@ -26,6 +26,15 @@ type Mask16 struct{ v mask16Data }
 // The value is opaque: use the methods; the layout differs by path.
 type Lane48 struct{ v lane48Data }
 
+// Shift16 holds LaneWidth shift amounts, one for each lane of a Lane16.
+//
+// The value is opaque: build it with SplatShift16 or LoadShift16.
+type Shift16 struct{ v shift16Data }
+
+// maxShiftCount is the largest amount a 32-bit lane can distinguish. Every
+// larger amount gives the same result, so the constructors store this one.
+const maxShiftCount = 31
+
 // LanesAvailable reports whether lane operations may be called. It is false
 // only in an amd64 SIMD build on a CPU without AVX2. Calling any lane operation
 // in that case is undefined. Other build paths always return true.
@@ -56,6 +65,38 @@ func (a Lane16) Mul(b Lane16) Lane16 { return mulLane16(a, b) }
 // MulRound returns a*b lane-wise, rounded to the nearest Q16.16 step with
 // exact ties toward positive infinity, and saturated.
 func (a Lane16) MulRound(b Lane16) Lane16 { return mulRoundLane16(a, b) }
+
+// SplatShift16 returns a Shift16 with every lane set to n. An amount above 31
+// is stored as 31; both shift a lane to zero, or to -1 raw when it is negative.
+func SplatShift16(n uint8) Shift16 { return splatShift16(min(n, maxShiftCount)) }
+
+// LoadShift16 loads LaneWidth shift amounts from p, with the SplatShift16 rule
+// for an amount above 31. It widens every amount, so it is not a single load.
+func LoadShift16(p *[LaneWidth]uint8) Shift16 {
+	var n [LaneWidth]uint8
+	for i := range LaneWidth {
+		n[i] = min(p[i], maxShiftCount)
+	}
+	return loadShift16(&n)
+}
+
+// ScaleDown returns a divided by two raised to the matching lane of s. It
+// rounds toward negative infinity, which is the Mul rule, and it cannot
+// overflow or saturate.
+//
+// For an amount up to 16 the result is the same bits as Mul by the Q16 value
+// of two raised to minus that amount. Past 16 that value is not on the Q16
+// grid and the two disagree: Mul gives zero, ScaleDown keeps shifting.
+func (a Lane16) ScaleDown(s Shift16) Lane16 { return scaleDownLane16(a, s) }
+
+// ScaleDownRound returns a divided by two raised to the matching lane of s,
+// rounded to the nearest step with exact ties toward positive infinity. It
+// cannot overflow or saturate.
+//
+// For an amount up to 16 the result is the same bits as MulRound by the Q16
+// value of two raised to minus that amount. ScaleDown is the truncating form
+// and costs one instruction, so prefer it when the rounding does not matter.
+func (a Lane16) ScaleDownRound(s Shift16) Lane16 { return scaleDownRoundLane16(a, s) }
 
 // MulAdd returns a.Add(b.Mul(c)). It never fuses the two operations.
 func (a Lane16) MulAdd(b, c Lane16) Lane16 { return a.Add(b.Mul(c)) }
