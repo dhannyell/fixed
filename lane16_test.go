@@ -1,6 +1,7 @@
 package fixed_test
 
 import (
+	"fmt"
 	"math"
 	"math/rand"
 	"os"
@@ -92,7 +93,7 @@ func laneTestInputs(vector int, rng *rand.Rand) (
 	b[0], c[0] = fixed.Q16One(), fixed.Q16One()
 	if fixed.LaneWidth > 1 {
 		q[1] = fixed.Q48MinValue()
-		b[1], c[1] = fixed.Q16One(), fixed.Q16One()
+		b[1], c[1] = fixed.Q16One(), fixed.Q16FromInt(-1)
 	}
 	return a, b, c, q, r
 }
@@ -108,7 +109,15 @@ func exerciseLane16Vector(
 	checkLane16(t, "splat", func() fixed.Lane16 { return fixed.SplatLane16(a[0]) }, func(int) fixed.Q16 { return a[0] })
 	checkLane16(t, "add", func() fixed.Lane16 { return la.Add(lb) }, func(i int) fixed.Q16 { return a[i].Add(b[i]) })
 	checkLane16(t, "sub", func() fixed.Lane16 { return la.Sub(lb) }, func(i int) fixed.Q16 { return a[i].Sub(b[i]) })
+	// The scalar reference is the product Neg replaces, so this holds the
+	// documented equivalence at the saturating edge too.
+	checkLane16(t, "neg", func() fixed.Lane16 { return la.Neg() }, func(i int) fixed.Q16 {
+		return fixed.Q16FromInt(-1).Mul(a[i])
+	})
 	checkLane16(t, "mul", func() fixed.Lane16 { return la.Mul(lb) }, func(i int) fixed.Q16 { return a[i].Mul(b[i]) })
+	checkLane16(t, "mulround", func() fixed.Lane16 { return la.MulRound(lb) }, func(i int) fixed.Q16 {
+		return a[i].MulRound(b[i])
+	})
 	checkLane16(t, "muladd", func() fixed.Lane16 { return la.MulAdd(lb, lc) }, func(i int) fixed.Q16 {
 		return a[i].Add(b[i].Mul(c[i]))
 	})
@@ -149,6 +158,16 @@ func exerciseLane16Vector(
 		return a[i].ToQ48()
 	})
 
+	// The unchecked forms wrap instead of clamping, so the reference is raw
+	// integer arithmetic, not the Q16 operators. They must also record no
+	// saturation event, which checkLane16 compares against the same reference.
+	checkLane16(t, "addwrap", func() fixed.Lane16 { return la.AddWrap(lb) }, func(i int) fixed.Q16 {
+		return fixed.Q16FromRaw(a[i].Raw() + b[i].Raw())
+	})
+	checkLane16(t, "subwrap", func() fixed.Lane16 { return la.SubWrap(lb) }, func(i int) fixed.Q16 {
+		return fixed.Q16FromRaw(a[i].Raw() - b[i].Raw())
+	})
+
 	fixed.ResetSaturationCount()
 	if !la.Greater(la).AllZero() {
 		t.Fatal("Greater self mask is not all zero")
@@ -177,9 +196,20 @@ func exerciseLane48Vector(
 	checkLane48(t, "muladd16", func() fixed.Lane48 { return la.MulAdd16(lx, ly) }, func(i int) fixed.Q48 {
 		return a[i].MulAdd16(x[i], y[i])
 	})
+	checkLane48(t, "muladd16round", func() fixed.Lane48 { return la.MulAdd16Round(lx, ly) }, func(i int) fixed.Q48 {
+		return a[i].MulAdd16Round(x[i], y[i])
+	})
 	checkLane16(t, "to-lane16", func() fixed.Lane16 { return la.ToLane16() }, func(i int) fixed.Q16 {
 		return a[i].ToQ16()
 	})
+
+	checkLane48(t, "addwrap", func() fixed.Lane48 { return la.AddWrap(lb) }, func(i int) fixed.Q48 {
+		return fixed.Q48FromRaw(a[i].Raw() + b[i].Raw())
+	})
+	checkLane48(t, "subwrap", func() fixed.Lane48 { return la.SubWrap(lb) }, func(i int) fixed.Q48 {
+		return fixed.Q48FromRaw(a[i].Raw() - b[i].Raw())
+	})
+
 }
 
 func checkLane16(
@@ -239,5 +269,216 @@ func checkLane48(
 	}
 	if fixed.SaturationCountingEnabled && gotEvents != wantEvents {
 		t.Fatalf("%s recorded %d saturation events, scalar recorded %d", name, gotEvents, wantEvents)
+	}
+}
+
+func TestLaneScaleDownMatchesMulByPowerOfTwo(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	// The values cover both signs, the Q16 extremes, and the small magnitudes
+	// where a truncating shift could part company with a rounding multiply.
+	raws := []int32{0, 1, -1, 2, -2, 3, -3, 2457, -2457, 65535, -65535,
+		1 << 20, -(1 << 20), fixed.Q16MaxValue().Raw(), fixed.Q16MinValue().Raw()}
+
+	var values [fixed.LaneWidth]fixed.Q16
+	var amounts [fixed.LaneWidth]uint8
+
+	for base := range raws {
+		for lane := range fixed.LaneWidth {
+			values[lane] = fixed.Q16FromRaw(raws[(base+lane)%len(raws)])
+			// Every lane takes its own amount, so a uniform shift would fail
+			// this test. The amounts stay within the grid, at 16 and below.
+			amounts[lane] = uint8((base + lane*3) % 17)
+		}
+		a := fixed.LoadLane16(&values)
+		s := fixed.LoadShift16(&amounts)
+
+		checkLane16(t, fmt.Sprintf("ScaleDown from raws[%d]", base),
+			func() fixed.Lane16 { return a.ScaleDown(s) },
+			func(lane int) fixed.Q16 {
+				return values[lane].Mul(fixed.Q16FromRaw(int32(1) << 16 >> amounts[lane]))
+			})
+
+		// The rounded form answers to MulRound, tie rule included.
+		checkLane16(t, fmt.Sprintf("ScaleDownRound from raws[%d]", base),
+			func() fixed.Lane16 { return a.ScaleDownRound(s) },
+			func(lane int) fixed.Q16 {
+				return values[lane].MulRound(fixed.Q16FromRaw(int32(1) << 16 >> amounts[lane]))
+			})
+	}
+}
+
+func TestLaneScaleDownRoundBreaksTiesUpward(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	// A tie is a value whose discarded part is exactly one half. Both signs
+	// must move toward positive infinity, which is where the two forms part:
+	// ScaleDown takes the floor of the same input.
+	cases := []struct {
+		raw              int32
+		amount           uint8
+		wantRound, wantD int32
+	}{
+		{1, 1, 1, 0},
+		{-1, 1, 0, -1},
+		{3, 1, 2, 1},
+		{-3, 1, -1, -2},
+		{5, 2, 1, 1},
+		{-5, 2, -1, -2},
+		{-6, 2, -1, -2},
+		{1 << 15, 16, 1, 0},
+		{0, 5, 0, 0},
+		{-2457, 0, -2457, -2457},
+	}
+
+	for _, c := range cases {
+		var round, down [fixed.LaneWidth]fixed.Q16
+		a := fixed.SplatLane16(fixed.Q16FromRaw(c.raw))
+		s := fixed.SplatShift16(c.amount)
+		a.ScaleDownRound(s).Store(&round)
+		a.ScaleDown(s).Store(&down)
+		// Every lane carries the same value and amount, so a lane that
+		// disagrees means the shift read the wrong count for it.
+		for lane := range fixed.LaneWidth {
+			if round[lane].Raw() != c.wantRound || down[lane].Raw() != c.wantD {
+				t.Errorf("raw %d by %d lane %d: round %d down %d, want round %d down %d",
+					c.raw, c.amount, lane, round[lane].Raw(), down[lane].Raw(), c.wantRound, c.wantD)
+			}
+		}
+	}
+}
+
+func TestLaneScaleDownPastTheQ16Grid(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	// Past 16 the descale leaves the Q16 grid, so ScaleDown stops tracking Mul:
+	// it keeps shifting where Mul would give zero. An amount above 31 acts
+	// like 31, which is what the constructors store.
+	cases := []struct {
+		raw             int32
+		amount          uint8
+		want, wantRound int32
+	}{
+		{1 << 20, 20, 1, 1},
+		{1 << 20, 31, 0, 0},
+		{1 << 20, 200, 0, 0},
+		{-1, 17, -1, 0},
+		{-1, 200, -1, 0},
+		{fixed.Q16MinValue().Raw(), 31, -1, -1},
+	}
+
+	for _, c := range cases {
+		var got, round [fixed.LaneWidth]fixed.Q16
+		a := fixed.SplatLane16(fixed.Q16FromRaw(c.raw))
+		s := fixed.SplatShift16(c.amount)
+		a.ScaleDown(s).Store(&got)
+		a.ScaleDownRound(s).Store(&round)
+		for lane := range fixed.LaneWidth {
+			if got[lane].Raw() != c.want || round[lane].Raw() != c.wantRound {
+				t.Errorf("raw %d by %d lane %d: down %d round %d, want down %d round %d",
+					c.raw, c.amount, lane, got[lane].Raw(), round[lane].Raw(), c.want, c.wantRound)
+			}
+		}
+	}
+
+	// LoadShift16 clamps on its own path, and the clamp is what stops a large
+	// amount from becoming a left shift on NEON. Alternate 31 with an amount
+	// past it: both stand for the same shift, so every lane must agree.
+	var amounts [fixed.LaneWidth]uint8
+	for lane := range fixed.LaneWidth {
+		amounts[lane] = uint8(31 + lane%2*200)
+	}
+	var got [fixed.LaneWidth]fixed.Q16
+	fixed.SplatLane16(fixed.Q16FromRaw(-1)).
+		ScaleDownRound(fixed.LoadShift16(&amounts)).Store(&got)
+	for lane := range fixed.LaneWidth {
+		if got[lane].Raw() != 0 {
+			t.Errorf("LoadShift16 lane %d by %d = %d, want 0", lane, amounts[lane], got[lane].Raw())
+		}
+	}
+}
+
+func TestLaneScaleUpMatchesMulByPowerOfTwo(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	// The large raws reach the Q16 limits at these amounts, so the run also
+	// compares the saturation count against the scalar multiply.
+	raws := []int32{0, 1, -1, 2, -2, 3, -3, 2457, -2457, 65535, -65535,
+		1 << 20, -(1 << 20), fixed.Q16MaxValue().Raw(), fixed.Q16MinValue().Raw()}
+
+	var values [fixed.LaneWidth]fixed.Q16
+	var amounts [fixed.LaneWidth]uint8
+
+	for base := range raws {
+		for lane := range fixed.LaneWidth {
+			values[lane] = fixed.Q16FromRaw(raws[(base+lane)%len(raws)])
+			// Every lane takes its own amount. They stop at 14, the last one
+			// whose power of two the multiply below can still express.
+			amounts[lane] = uint8((base + lane*3) % 15)
+		}
+		a := fixed.LoadLane16(&values)
+		s := fixed.LoadShift16(&amounts)
+
+		checkLane16(t, fmt.Sprintf("ScaleUp from raws[%d]", base),
+			func() fixed.Lane16 { return a.ScaleUp(s) },
+			func(lane int) fixed.Q16 {
+				return values[lane].Mul(fixed.Q16FromRaw(int32(1) << 16 << amounts[lane]))
+			})
+	}
+}
+
+func TestLaneScaleUpSaturatesPastTheQ16Range(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	max, min := fixed.Q16MaxValue().Raw(), fixed.Q16MinValue().Raw()
+	cases := []struct {
+		raw    int32
+		amount uint8
+		want   int32
+		events uint64
+	}{
+		{1, 30, 1 << 30, 0},
+		{1, 31, max, 1},
+		{3, 30, max, 1},
+		{0, 31, 0, 0},
+		{min, 1, min, 1},
+		// Minus one by two to the thirty-first is the Q16 minimum exactly, so
+		// this lane reaches the limit without leaving the range.
+		{-1, 31, min, 0},
+		// Minus three wraps onto the minimum, which is also where it saturates.
+		// A count that compared the wrapped result with the saturated one would
+		// see no difference and miss this lane.
+		{-3, 31, min, 1},
+	}
+
+	for _, c := range cases {
+		fixed.ResetSaturationCount()
+		var got [fixed.LaneWidth]fixed.Q16
+		fixed.SplatLane16(fixed.Q16FromRaw(c.raw)).
+			ScaleUp(fixed.SplatShift16(c.amount)).Store(&got)
+		events := fixed.SaturationCount()
+
+		// Every lane carries the same value and amount, so a lane that
+		// disagrees means the shift read the wrong count for it.
+		for lane := range fixed.LaneWidth {
+			if got[lane].Raw() != c.want {
+				t.Errorf("raw %d up by %d lane %d = %d, want %d",
+					c.raw, c.amount, lane, got[lane].Raw(), c.want)
+			}
+		}
+		if want := expectedSaturations(c.events * uint64(fixed.LaneWidth)); events != want {
+			t.Errorf("raw %d up by %d recorded %d events, want %d",
+				c.raw, c.amount, events, want)
+		}
 	}
 }

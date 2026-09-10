@@ -1,9 +1,10 @@
 // Command fixedtrace writes one text trace per operation. Every line carries
 // the raw inputs and the raw results of one case.
 //
-// Usage:
+// The sat column reads the library counter, which only a build with the
+// fixed_satcounter tag records. The tag is part of the usage:
 //
-//	go run github.com/dhannyell/fixed/cmd/fixedtrace@v0.8.0 -o dir
+//	go run -tags=fixed_satcounter github.com/dhannyell/fixed/cmd/fixedtrace@v1.0.0 -o dir
 package main
 
 import (
@@ -124,7 +125,8 @@ func main() {
 	flag.Parse()
 
 	if !fixed.SaturationCountingEnabled {
-		fmt.Fprintln(os.Stderr, "fixedtrace: the sat column needs the saturation counter")
+		fmt.Fprintln(os.Stderr, "fixedtrace: the sat column needs the saturation counter.")
+		fmt.Fprintln(os.Stderr, "Rerun with: go run -tags=fixed_satcounter ./cmd/fixedtrace")
 		os.Exit(1)
 	}
 

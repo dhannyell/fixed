@@ -41,6 +41,19 @@ func vecProducts48(x, y archsimd.Int32x8, order archsimd.Uint32x8) (lo, hi archs
 	return lo, hi
 }
 
+// vecProducts48Round rounds the products to the nearest Q48.16 step before
+// returning them, with exact ties toward positive infinity.
+func vecProducts48Round(x, y archsimd.Int32x8, order archsimd.Uint32x8) (lo, hi archsimd.Int64x4) {
+	x = x.Permute(order)
+	y = y.Permute(order)
+	xOdd := x.AsUint64x4().ShiftAllRight(32).AsInt32x8()
+	yOdd := y.AsUint64x4().ShiftAllRight(32).AsInt32x8()
+	bias := archsimd.BroadcastInt64x4(q16RawHalf)
+	lo = vecSra16(x.MulWidenEven(y).Add(bias))
+	hi = vecSra16(xOdd.MulWidenEven(yOdd).Add(bias))
+	return lo, hi
+}
+
 // vecAddSat64 adds with Q48 saturation and returns the saturated lane count.
 // Overflow is read from the sign of (x^r)&(y^r); the saturated value is Max
 // for a non-negative x and Min for a negative x.

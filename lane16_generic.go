@@ -7,6 +7,7 @@ const LaneWidth = 4
 
 type lane16Data [LaneWidth]int32
 type mask16Data [LaneWidth]int32
+type shift16Data [LaneWidth]uint8
 type lane48Data [LaneWidth]int64
 
 func lanesAvailable() bool { return true }
@@ -55,6 +56,54 @@ func mulLane16(a, b Lane16) Lane16 {
 	var r Lane16
 	for i := range LaneWidth {
 		r.v[i] = Q16{raw: a.v[i]}.Mul(Q16{raw: b.v[i]}).raw
+	}
+	return r
+}
+
+func mulRoundLane16(a, b Lane16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = Q16{raw: a.v[i]}.MulRound(Q16{raw: b.v[i]}).raw
+	}
+	return r
+}
+
+func splatShift16(n uint8) Shift16 {
+	var r Shift16
+	for i := range LaneWidth {
+		r.v[i] = n
+	}
+	return r
+}
+
+func loadShift16(p *[LaneWidth]uint8) Shift16 { return Shift16{*p} }
+
+func scaleDownLane16(a Lane16, s Shift16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] >> s.v[i]
+	}
+	return r
+}
+
+func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		n := s.v[i]
+		r.v[i] = a.v[i] >> n
+		// An amount of zero has no bit below the truncation point.
+		if n > 0 {
+			r.v[i] += (a.v[i] >> (n - 1)) & 1
+		}
+	}
+	return r
+}
+
+func scaleUpLane16(a Lane16, s Shift16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		// int64 holds the shift without loss: 31 value bits and 31 places.
+		r.v[i] = q16Saturate(int64(a.v[i]) << s.v[i]).raw
 	}
 	return r
 }
@@ -189,10 +238,51 @@ func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
 	return r
 }
 
+func mulAdd16RoundLane48(a Lane48, b, c Lane16) Lane48 {
+	var r Lane48
+	for i := range LaneWidth {
+		product := (int64(b.v[i])*int64(c.v[i]) + q16RawHalf) >> 16
+		r.v[i] = Q48{raw: a.v[i]}.Add(Q48{raw: product}).raw
+	}
+	return r
+}
+
 func lane48ToLane16(a Lane48) Lane16 {
 	var r Lane16
 	for i := range LaneWidth {
 		r.v[i] = Q48{raw: a.v[i]}.ToQ16().raw
+	}
+	return r
+}
+
+func addWrapLane16(a, b Lane16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] + b.v[i]
+	}
+	return r
+}
+
+func subWrapLane16(a, b Lane16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] - b.v[i]
+	}
+	return r
+}
+
+func addWrapLane48(a, b Lane48) Lane48 {
+	var r Lane48
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] + b.v[i]
+	}
+	return r
+}
+
+func subWrapLane48(a, b Lane48) Lane48 {
+	var r Lane48
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] - b.v[i]
 	}
 	return r
 }

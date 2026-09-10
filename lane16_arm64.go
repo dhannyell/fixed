@@ -9,6 +9,7 @@ const LaneWidth = 4
 
 type lane16Data = archsimd.Int32x4
 type mask16Data = archsimd.Mask32x4
+type shift16Data = archsimd.Int32x4
 
 type lane48Data struct {
 	lo archsimd.Int64x2
@@ -67,6 +68,66 @@ func mulLane16(a, b Lane16) Lane16 {
 	zero := archsimd.BroadcastInt32x4(0)
 	recordLaneSaturations(vecLaneSum(zero.Sub(ovf)))
 	return Lane16{r}
+}
+
+func mulRoundLane16(a, b Lane16) Lane16 {
+	x, y := a.v, b.v
+	bias := archsimd.BroadcastInt64x2(q16RawHalf)
+	lo := x.MulWidenLo(y).Add(bias).ShiftAllRight(16)
+	hi := x.HiToLo().MulWidenLo(y.HiToLo()).Add(bias).ShiftAllRight(16)
+	r, ovf := vecNarrowPairNEON(lo, hi)
+	zero := archsimd.BroadcastInt32x4(0)
+	recordLaneSaturations(vecLaneSum(zero.Sub(ovf)))
+	return Lane16{r}
+}
+
+// NEON has no dedicated per-lane right shift. VSSHL reads a signed amount from
+// the low byte of each lane: a positive amount shifts left, a negative amount
+// shifts right. So this path stores the negated amount. That puts the negation
+// in the constructors, which run once, and leaves the shift as one instruction.
+// A stored amount reaches -31 at most, which fits the low byte.
+
+func splatShift16(n uint8) Shift16 {
+	return Shift16{archsimd.BroadcastInt32x4(-int32(n))}
+}
+
+func loadShift16(p *[LaneWidth]uint8) Shift16 {
+	var w [LaneWidth]int32
+	for i := range LaneWidth {
+		w[i] = -int32(p[i])
+	}
+	return Shift16{archsimd.LoadInt32x4Array(&w)}
+}
+
+// scaleDownLane16 is one VSSHL. An arithmetic shift right cannot leave the
+// int32 range, so this path records no saturation event.
+func scaleDownLane16(a Lane16, s Shift16) Lane16 {
+	return Lane16{a.v.Shift(s.v)}
+}
+
+// scaleDownRoundLane16 adds the bit below the truncation point to the shifted
+// value, which rounds half away from the floor.
+//
+// This path stores the amount negated, so adding one to it reads one place
+// higher. An amount of zero turns into a left shift by one place, whose low bit
+// is zero, so it contributes nothing.
+func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
+	ones := archsimd.BroadcastInt32x4(1)
+	half := a.v.Shift(s.v.Add(ones)).And(ones)
+	return Lane16{a.v.Shift(s.v).Add(half)}
+}
+
+// scaleUpLane16 is VSQSHL, which saturates on its own. This path stores the
+// amount negated, so it negates back to get a left shift.
+//
+// A wrapped lane can land on the same bits as the saturated one, so the count
+// comes from the round trip that the amd64 path uses, not from comparing the
+// two results.
+func scaleUpLane16(a Lane16, s Shift16) Lane16 {
+	n := s.v.Neg()
+	ovf := a.v.Shift(n).Shift(s.v).NotEqual(a.v)
+	recordLaneSaturations(laneMaskCount32(ovf))
+	return Lane16{a.v.ShiftSaturated(n)}
 }
 
 func minLane16(a, b Lane16) Lane16 {
@@ -178,10 +239,34 @@ func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
 	return Lane48{lane48Data{lo: lo, hi: hi}}
 }
 
+func mulAdd16RoundLane48(a Lane48, b, c Lane16) Lane48 {
+	acc := a.v
+	x, y := b.v, c.v
+	bias := archsimd.BroadcastInt64x2(q16RawHalf)
+	productLo := x.MulWidenLo(y).Add(bias).ShiftAllRight(16)
+	productHi := x.HiToLo().MulWidenLo(y.HiToLo()).Add(bias).ShiftAllRight(16)
+	lo, loEvents := laneAddSat64(acc.lo, productLo)
+	hi, hiEvents := laneAddSat64(acc.hi, productHi)
+	recordLaneSaturations(loEvents + hiEvents)
+	return Lane48{lane48Data{lo: lo, hi: hi}}
+}
+
 func lane48ToLane16(a Lane48) Lane16 {
 	x := a.v
 	r, ovf := vecNarrowPairNEON(x.lo, x.hi)
 	zero := archsimd.BroadcastInt32x4(0)
 	recordLaneSaturations(vecLaneSum(zero.Sub(ovf)))
 	return Lane16{r}
+}
+
+func addWrapLane16(a, b Lane16) Lane16 { return Lane16{a.v.Add(b.v)} }
+
+func subWrapLane16(a, b Lane16) Lane16 { return Lane16{a.v.Sub(b.v)} }
+
+func addWrapLane48(a, b Lane48) Lane48 {
+	return Lane48{lane48Data{lo: a.v.lo.Add(b.v.lo), hi: a.v.hi.Add(b.v.hi)}}
+}
+
+func subWrapLane48(a, b Lane48) Lane48 {
+	return Lane48{lane48Data{lo: a.v.lo.Sub(b.v.lo), hi: a.v.hi.Sub(b.v.hi)}}
 }

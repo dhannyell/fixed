@@ -26,6 +26,15 @@ type Mask16 struct{ v mask16Data }
 // The value is opaque: use the methods; the layout differs by path.
 type Lane48 struct{ v lane48Data }
 
+// Shift16 holds LaneWidth shift amounts, one for each lane of a Lane16.
+//
+// The value is opaque: build it with SplatShift16 or LoadShift16.
+type Shift16 struct{ v shift16Data }
+
+// maxShiftCount is the largest amount a 32-bit lane can distinguish. Every
+// larger amount gives the same result, so the constructors store this one.
+const maxShiftCount = 31
+
 // LanesAvailable reports whether lane operations may be called. It is false
 // only in an amd64 SIMD build on a CPU without AVX2. Calling any lane operation
 // in that case is undefined. Other build paths always return true.
@@ -50,8 +59,68 @@ func (a Lane16) Add(b Lane16) Lane16 { return addLane16(a, b) }
 // Sub returns a-b lane-wise, with Q16 saturation.
 func (a Lane16) Sub(b Lane16) Lane16 { return subLane16(a, b) }
 
+// Neg returns -a lane-wise, with Q16 saturation. It subtracts from zero
+// rather than multiplying by -1, which costs a widening product on the SIMD
+// paths. The two agree in every lane, saturation included.
+func (a Lane16) Neg() Lane16 { return subLane16(SplatLane16(Q16Zero()), a) }
+
+// AddWrap returns a+b lane-wise without overflow detection. A sum outside
+// Q16 wraps and records no event. The caller must bound both operands; Add
+// is the checked form.
+func (a Lane16) AddWrap(b Lane16) Lane16 { return addWrapLane16(a, b) }
+
+// SubWrap returns a-b lane-wise without overflow detection. A difference
+// outside Q16 wraps and records no event. The caller must bound both
+// operands; Sub is the checked form.
+func (a Lane16) SubWrap(b Lane16) Lane16 { return subWrapLane16(a, b) }
+
 // Mul returns a*b lane-wise, rounded down to Q16.16 and saturated.
 func (a Lane16) Mul(b Lane16) Lane16 { return mulLane16(a, b) }
+
+// MulRound returns a*b lane-wise, rounded to the nearest Q16.16 step with
+// exact ties toward positive infinity, and saturated.
+func (a Lane16) MulRound(b Lane16) Lane16 { return mulRoundLane16(a, b) }
+
+// SplatShift16 returns a Shift16 with every lane set to n. An amount above 31
+// is stored as 31; both shift a lane to zero, or to -1 raw when it is negative.
+func SplatShift16(n uint8) Shift16 { return splatShift16(min(n, maxShiftCount)) }
+
+// LoadShift16 loads LaneWidth shift amounts from p, with the SplatShift16 rule
+// for an amount above 31. It widens every amount, so it is not a single load.
+func LoadShift16(p *[LaneWidth]uint8) Shift16 {
+	var n [LaneWidth]uint8
+	for i := range LaneWidth {
+		n[i] = min(p[i], maxShiftCount)
+	}
+	return loadShift16(&n)
+}
+
+// ScaleDown returns a divided by two raised to the matching lane of s. It
+// rounds toward negative infinity, which is the Mul rule, and it cannot
+// overflow or saturate.
+//
+// For an amount up to 16 the result is the same bits as Mul by the Q16 value
+// of two raised to minus that amount. Past 16 that value is not on the Q16
+// grid and the two disagree: Mul gives zero, ScaleDown keeps shifting.
+func (a Lane16) ScaleDown(s Shift16) Lane16 { return scaleDownLane16(a, s) }
+
+// ScaleDownRound returns a divided by two raised to the matching lane of s,
+// rounded to the nearest step with exact ties toward positive infinity. It
+// cannot overflow or saturate.
+//
+// For an amount up to 16 the result is the same bits as MulRound by the Q16
+// value of two raised to minus that amount. ScaleDown is the truncating form
+// and costs one instruction, so prefer it when the rounding does not matter.
+func (a Lane16) ScaleDownRound(s Shift16) Lane16 { return scaleDownRoundLane16(a, s) }
+
+// ScaleUp returns a multiplied by two raised to the matching lane of s, with
+// Q16 saturation. ScaleDown cannot overflow; this direction can, and a lane
+// past the Q16 range clamps to the nearer limit and records an event.
+//
+// For an amount up to 14 the result is the same bits as Mul by the Q16 value
+// of two raised to that amount. Two to the fifteenth is already off the Q16
+// grid, so past 14 only the shift keeps going.
+func (a Lane16) ScaleUp(s Shift16) Lane16 { return scaleUpLane16(a, s) }
 
 // MulAdd returns a.Add(b.Mul(c)). It never fuses the two operations.
 func (a Lane16) MulAdd(b, c Lane16) Lane16 { return a.Add(b.Mul(c)) }
@@ -102,9 +171,23 @@ func (a Lane48) Add(b Lane48) Lane48 { return addLane48(a, b) }
 // Sub returns a-b lane-wise, with Q48 saturation.
 func (a Lane48) Sub(b Lane48) Lane48 { return subLane48(a, b) }
 
+// AddWrap returns a+b lane-wise without overflow detection. A sum outside
+// Q48 wraps and records no event. The caller must bound both operands; Add
+// is the checked form.
+func (a Lane48) AddWrap(b Lane48) Lane48 { return addWrapLane48(a, b) }
+
+// SubWrap returns a-b lane-wise without overflow detection. A difference
+// outside Q48 wraps and records no event. The caller must bound both
+// operands; Sub is the checked form.
+func (a Lane48) SubWrap(b Lane48) Lane48 { return subWrapLane48(a, b) }
+
 // MulAdd16 adds the exact b*c Q16 product to each Q48 accumulator lane. Each
 // product is rounded down to the shared Q48.16 grid before the saturating add.
 func (a Lane48) MulAdd16(b, c Lane16) Lane48 { return mulAdd16Lane48(a, b, c) }
+
+// MulAdd16Round rounds each Q16 product to the nearest Q48.16 step with exact
+// ties toward positive infinity before the saturating lane-wise add.
+func (a Lane48) MulAdd16Round(b, c Lane16) Lane48 { return mulAdd16RoundLane48(a, b, c) }
 
 // ToLane16 narrows every lane with Q48.ToQ16 saturation semantics.
 func (a Lane48) ToLane16() Lane16 { return lane48ToLane16(a) }

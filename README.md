@@ -96,17 +96,17 @@ fixed.Q48MustParse(q48.String()) == q48
 ## Rounding and overflow
 
 Overflow clamps a result to the format's minimum or maximum value. This is
-called *saturation*. Each saturation increments the process-wide atomic
-`SaturationCount` counter, which you can use for diagnostics without affecting
-the calculation.
+called *saturation*. A build with the `fixed_satcounter` tag also increments
+the process-wide `SaturationCount` counter, which you can use for diagnostics
+without affecting the calculation.
 
-### Disabling the saturation counter
+### Enabling the saturation counter
 
-Counting is enabled by default for diagnostics. For production builds, use
-the `fixed_nosatcounter` build tag to remove it at compile time:
+Counting is off by default. Add the `fixed_satcounter` build tag when you want
+the diagnostic counter:
 
 ```sh
-go build -tags=fixed_nosatcounter ./...
+go build -tags=fixed_satcounter ./...
 ```
 
 The same tag works for WebAssembly. In PowerShell:
@@ -114,34 +114,38 @@ The same tag works for WebAssembly. In PowerShell:
 ```powershell
 $env:GOOS = "js"
 $env:GOARCH = "wasm"
-go build -tags=fixed_nosatcounter ./...
+go build -tags=fixed_satcounter ./...
 ```
 
-Overflow still clamps to the same limits and every numeric result keeps the
-same bits. The flag removes diagnostic increments, atomic counter access, and
-local event counting in batch kernels. It does not remove the checks needed
-to saturate arithmetic. There is no runtime switch to check on each operation.
+Overflow clamps to the same limits and every numeric result keeps the same
+bits either way. The tag adds diagnostic increments, counter access, and local
+event counting in batch kernels. The checks that saturate arithmetic are
+always present. There is no runtime switch to check on each operation.
 
 On `js/wasm` and `wasip1` the counter is a plain variable rather than an
 atomic. Those targets run on one thread without asynchronous preemption, so
 an increment cannot be interrupted, and the atomic call would otherwise keep
 the scalar methods from inlining on WebAssembly.
 
-`SaturationCountingEnabled` is a compile-time constant. With the tag enabled,
-it is `false`, `SaturationCount()` always returns zero, and
-`ResetSaturationCount()` does nothing. Omit the tag in development to restore
-counting. You can combine it with `GOEXPERIMENT=simd`.
+`SaturationCountingEnabled` is a compile-time constant. Without the tag it is
+`false`, `SaturationCount()` always returns zero, and `ResetSaturationCount()`
+does nothing. You can combine the tag with `GOEXPERIMENT=simd`.
 
-To measure the effect on your target, run the same benchmark in both modes:
+Before v1.0.0 the counter was on by default and `fixed_nosatcounter` removed
+it. If you read `SaturationCount()`, add `fixed_satcounter`. If you passed
+`fixed_nosatcounter`, drop it; the new default already leaves the counter out.
+
+To measure what the counter costs on your target, run the same benchmark both
+ways:
 
 ```sh
 go test -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
-go test -tags=fixed_nosatcounter -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
+go test -tags=fixed_satcounter -run '^$' -bench '^BenchmarkSaturationOverhead' -count=10 .
 ```
 
 These tests include safe and saturating inputs. Scalar counting happens only
 when an operation saturates; batch kernels can also spend time collecting
-events locally. The benefit depends on the workload and target.
+events locally. The cost depends on the workload and target.
 
 ### Arithmetic rules
 
@@ -149,6 +153,7 @@ events locally. The benefit depends on the workload and target.
 | --- | --- |
 | `Add`, `Sub` | Exact when the result fits |
 | `Mul` | Round down to the format's grid |
+| `Q16.MulRound` | Nearest step; exact halves go toward positive infinity |
 | `Div`, `FromRatio` | Truncate toward zero |
 | `Sqrt` | Round down to the format's grid |
 | `Round` | Nearest integer; exact halves go away from zero |
@@ -158,6 +163,9 @@ events locally. The benefit depends on the workload and target.
 Rounding down and truncating toward zero differ for negative values. The
 library keeps that distinction: multiplication rounds down, while division
 truncates toward zero. Results outside the target range saturate.
+
+The nearest-step operations break an exact half toward positive infinity, not
+away from zero like `Round`. A negative half therefore moves toward zero.
 
 Division by zero, a zero denominator in `FromRatio`, and the square root of a
 negative value panic.
@@ -177,7 +185,9 @@ destination's range saturates.
 | `Q16.ToQ32` | Exact; more range and finer resolution |
 | `Q16.ToQ48` | Exact; more range, same resolution |
 | `Q32.ToQ16` | Rounds down; saturates outside the Q16 range |
+| `Q32.ToQ16Round` | Nearest step; saturates outside the Q16 range |
 | `Q32.ToQ48` | Rounds down; the wider range needs no saturation |
+| `Q32.ToQ48Round` | Nearest step; the wider range needs no saturation |
 | `Q48.ToQ16` | Same resolution; saturates outside the Q16 range |
 | `Q48.ToQ32` | Exact when in range; saturates outside the Q32 range |
 
@@ -194,6 +204,10 @@ for i := range a {
 }
 dot := acc.ToQ16() // Convert back when you need the narrower value.
 ```
+
+`Q48.MulAdd16Round` rounds each product to the nearest step instead, with
+exact ties toward positive infinity. The floored form loses less than one step
+per product, always in the same direction, and a long sum accumulates that.
 
 `Q48.Mul16` multiplies a Q48 value by a Q16 factor. It rounds down and
 saturates just like `Mul` with the factor converted to Q48.
@@ -293,13 +307,31 @@ a CPU without AVX2, where calling lane operations is undefined.
 
 | Type | Operations |
 | --- | --- |
-| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
+| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Neg`, `AddWrap`, `SubWrap`, `Mul`, `MulRound`, `ScaleDown`, `ScaleDownRound`, `ScaleUp`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
 | `Mask16` | `Or`, `AllZero`, `BlendLane16` |
-| `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `MulAdd16`, `ToLane16` |
+| `Shift16` | `SplatShift16`, `LoadShift16` |
+| `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `AddWrap`, `SubWrap`, `MulAdd16`, `MulAdd16Round`, `ToLane16` |
 
 `MulAdd` and `MulSub` perform two ordered operations rather than a fused
-operation. Lane multiplication rounds down, and every operation follows its
-scalar Q16 or Q48 saturation rules. The AVX2, NEON, and generic paths produce
+operation. `Mul` and `MulAdd16` round down, while the `Round` forms take the
+nearest step. Every operation follows its scalar Q16 or Q48 saturation rules.
+
+`ScaleDown` and `ScaleDownRound` divide by a power of two that each lane picks
+for itself, which a single instruction does on both SIMD paths. Up to an
+amount of 16 they give the same bits as `Mul` and `MulRound` by that power of
+two. Past 16 the divisor leaves the Q16 grid: the multiply gives zero, while
+the shift keeps going. An amount above 31 acts like 31.
+
+`ScaleUp` goes the other way. A left shift can leave the Q16 range, so it
+saturates and records the event. NEON has a saturating variable shift for it;
+the AVX2 path emulates one with a shift back and a compare. Up to an amount of
+14 it gives the same bits as `Mul` by that power of two; two to the fifteenth
+is already off the grid.
+
+`AddWrap` and `SubWrap` skip the overflow check on both types. A result
+outside the format wraps and records no saturation event, so the caller must
+bound the operands itself. They serve a caller that can prove the bound from
+the surrounding code and does not want to pay for the check. The AVX2, NEON, and generic paths produce
 identical result bits and saturation counts.
 
 ## Performance

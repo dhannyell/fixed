@@ -12,6 +12,7 @@ const LaneWidth = 8
 
 type lane16Data = archsimd.Int32x8
 type mask16Data = archsimd.Mask32x8
+type shift16Data = archsimd.Uint32x8
 
 type lane48Data struct {
 	lo archsimd.Int64x4
@@ -63,6 +64,63 @@ func mulLane16(a, b Lane16) Lane16 {
 	r, events := vecNarrowPair(even, odd)
 	recordLaneSaturations(events)
 	return Lane16{r}
+}
+
+func mulRoundLane16(a, b Lane16) Lane16 {
+	x, y := a.v, b.v
+	aOdd := x.AsUint64x4().ShiftAllRight(32).AsInt32x8()
+	bOdd := y.AsUint64x4().ShiftAllRight(32).AsInt32x8()
+	bias := archsimd.BroadcastUint64x4(q16RawHalf)
+	even := x.MulWidenEven(y).AsUint64x4().Add(bias).ShiftAllRight(16)
+	odd := aOdd.MulWidenEven(bOdd).AsUint64x4().Add(bias).ShiftAllRight(16)
+	r, events := vecNarrowPair(even, odd)
+	recordLaneSaturations(events)
+	return Lane16{r}
+}
+
+func splatShift16(n uint8) Shift16 {
+	return Shift16{archsimd.BroadcastUint32x8(uint32(n))}
+}
+
+func loadShift16(p *[LaneWidth]uint8) Shift16 {
+	var w [LaneWidth]uint32
+	for i := range LaneWidth {
+		w[i] = uint32(p[i])
+	}
+	return Shift16{archsimd.LoadUint32x8Array(&w)}
+}
+
+// scaleDownLane16 is one VPSRAVD. An arithmetic shift right cannot leave the
+// int32 range, so this path records no saturation event.
+func scaleDownLane16(a Lane16, s Shift16) Lane16 {
+	return Lane16{a.v.ShiftRight(s.v)}
+}
+
+// scaleDownRoundLane16 adds the bit below the truncation point to the shifted
+// value, which rounds half away from the floor.
+//
+// It reads that bit with a logical shift, and that makes an amount of zero fall
+// out on its own: the amount minus one wraps to a count past the lane width,
+// and VPSRLVD gives zero for such a count. An arithmetic shift would give the
+// sign bit there instead, and a negative value would round the wrong way.
+func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
+	ones := archsimd.BroadcastUint32x8(1)
+	half := a.v.AsUint32x8().ShiftRight(s.v.Sub(ones)).And(ones)
+	return Lane16{a.v.ShiftRight(s.v).Add(half.AsInt32x8())}
+}
+
+// scaleUpLane16 has no saturating variable shift on AVX2. It shifts left, then
+// arithmetically back: a lane that does not survive the round trip overflowed.
+func scaleUpLane16(a Lane16, s Shift16) Lane16 {
+	r := a.v.ShiftLeft(s.v)
+	ovf := r.ShiftRight(s.v).NotEqual(a.v)
+	// Shifting by 31 gives 0 for a>=0 and -1 for a<0, so the xor picks
+	// q16RawMax on the high side and q16RawMin on the low side.
+	sat := a.v.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
+	if SaturationCountingEnabled {
+		recordLaneSaturations(uint64(bits.OnesCount8(ovf.ToBits())))
+	}
+	return Lane16{sat.IfElse(ovf, r)}
 }
 
 func minLane16(a, b Lane16) Lane16 {
@@ -166,6 +224,16 @@ func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
 	return Lane48{lane48Data{lo: lo, hi: hi}}
 }
 
+func mulAdd16RoundLane48(a Lane48, b, c Lane16) Lane48 {
+	acc := a.v
+	order := archsimd.LoadUint32x8Array(&q48SplitOrder)
+	productLo, productHi := vecProducts48Round(b.v, c.v, order)
+	lo, loEvents := vecAddSat64(acc.lo, productLo)
+	hi, hiEvents := vecAddSat64(acc.hi, productHi)
+	recordLaneSaturations(loEvents + hiEvents)
+	return Lane48{lane48Data{lo: lo, hi: hi}}
+}
+
 // laneNarrowQ48 packs the low words and checks that each discarded high word
 // equals the candidate sign extension.
 func laneNarrowQ48(lo, hi archsimd.Int64x4) (archsimd.Int32x8, uint64) {
@@ -188,4 +256,16 @@ func lane48ToLane16(a Lane48) Lane16 {
 	order := archsimd.LoadUint32x8Array(&q16NarrowOrder)
 	recordLaneSaturations(events)
 	return Lane16{r.Permute(order)}
+}
+
+func addWrapLane16(a, b Lane16) Lane16 { return Lane16{a.v.Add(b.v)} }
+
+func subWrapLane16(a, b Lane16) Lane16 { return Lane16{a.v.Sub(b.v)} }
+
+func addWrapLane48(a, b Lane48) Lane48 {
+	return Lane48{lane48Data{lo: a.v.lo.Add(b.v.lo), hi: a.v.hi.Add(b.v.hi)}}
+}
+
+func subWrapLane48(a, b Lane48) Lane48 {
+	return Lane48{lane48Data{lo: a.v.lo.Sub(b.v.lo), hi: a.v.hi.Sub(b.v.hi)}}
 }
