@@ -158,6 +158,16 @@ func exerciseLane16Vector(
 		return a[i].ToQ48()
 	})
 
+	// The unchecked forms wrap instead of clamping, so the reference is raw
+	// integer arithmetic, not the Q16 operators. They must also record no
+	// saturation event, which checkLane16 compares against the same reference.
+	checkLane16(t, "addwrap", func() fixed.Lane16 { return la.AddWrap(lb) }, func(i int) fixed.Q16 {
+		return fixed.Q16FromRaw(a[i].Raw() + b[i].Raw())
+	})
+	checkLane16(t, "subwrap", func() fixed.Lane16 { return la.SubWrap(lb) }, func(i int) fixed.Q16 {
+		return fixed.Q16FromRaw(a[i].Raw() - b[i].Raw())
+	})
+
 	fixed.ResetSaturationCount()
 	if !la.Greater(la).AllZero() {
 		t.Fatal("Greater self mask is not all zero")
@@ -192,6 +202,13 @@ func exerciseLane48Vector(
 	})
 	checkLane16(t, "to-lane16", func() fixed.Lane16 { return la.ToLane16() }, func(i int) fixed.Q16 {
 		return a[i].ToQ16()
+	})
+
+	checkLane48(t, "addwrap", func() fixed.Lane48 { return la.AddWrap(lb) }, func(i int) fixed.Q48 {
+		return fixed.Q48FromRaw(a[i].Raw() + b[i].Raw())
+	})
+	checkLane48(t, "subwrap", func() fixed.Lane48 { return la.SubWrap(lb) }, func(i int) fixed.Q48 {
+		return fixed.Q48FromRaw(a[i].Raw() - b[i].Raw())
 	})
 
 }

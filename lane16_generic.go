@@ -245,3 +245,35 @@ func lane48ToLane16(a Lane48) Lane16 {
 	}
 	return r
 }
+
+func addWrapLane16(a, b Lane16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] + b.v[i]
+	}
+	return r
+}
+
+func subWrapLane16(a, b Lane16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] - b.v[i]
+	}
+	return r
+}
+
+func addWrapLane48(a, b Lane48) Lane48 {
+	var r Lane48
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] + b.v[i]
+	}
+	return r
+}
+
+func subWrapLane48(a, b Lane48) Lane48 {
+	var r Lane48
+	for i := range LaneWidth {
+		r.v[i] = a.v[i] - b.v[i]
+	}
+	return r
+}

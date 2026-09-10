@@ -245,3 +245,15 @@ func lane48ToLane16(a Lane48) Lane16 {
 	recordLaneSaturations(vecLaneSum(zero.Sub(ovf)))
 	return Lane16{r}
 }
+
+func addWrapLane16(a, b Lane16) Lane16 { return Lane16{a.v.Add(b.v)} }
+
+func subWrapLane16(a, b Lane16) Lane16 { return Lane16{a.v.Sub(b.v)} }
+
+func addWrapLane48(a, b Lane48) Lane48 {
+	return Lane48{lane48Data{lo: a.v.lo.Add(b.v.lo), hi: a.v.hi.Add(b.v.hi)}}
+}
+
+func subWrapLane48(a, b Lane48) Lane48 {
+	return Lane48{lane48Data{lo: a.v.lo.Sub(b.v.lo), hi: a.v.hi.Sub(b.v.hi)}}
+}

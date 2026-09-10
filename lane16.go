@@ -64,6 +64,16 @@ func (a Lane16) Sub(b Lane16) Lane16 { return subLane16(a, b) }
 // paths. The two agree in every lane, saturation included.
 func (a Lane16) Neg() Lane16 { return subLane16(SplatLane16(Q16Zero()), a) }
 
+// AddWrap returns a+b lane-wise without overflow detection. A sum outside
+// Q16 wraps and records no event. The caller must bound both operands; Add
+// is the checked form.
+func (a Lane16) AddWrap(b Lane16) Lane16 { return addWrapLane16(a, b) }
+
+// SubWrap returns a-b lane-wise without overflow detection. A difference
+// outside Q16 wraps and records no event. The caller must bound both
+// operands; Sub is the checked form.
+func (a Lane16) SubWrap(b Lane16) Lane16 { return subWrapLane16(a, b) }
+
 // Mul returns a*b lane-wise, rounded down to Q16.16 and saturated.
 func (a Lane16) Mul(b Lane16) Lane16 { return mulLane16(a, b) }
 
@@ -151,6 +161,16 @@ func (a Lane48) Add(b Lane48) Lane48 { return addLane48(a, b) }
 
 // Sub returns a-b lane-wise, with Q48 saturation.
 func (a Lane48) Sub(b Lane48) Lane48 { return subLane48(a, b) }
+
+// AddWrap returns a+b lane-wise without overflow detection. A sum outside
+// Q48 wraps and records no event. The caller must bound both operands; Add
+// is the checked form.
+func (a Lane48) AddWrap(b Lane48) Lane48 { return addWrapLane48(a, b) }
+
+// SubWrap returns a-b lane-wise without overflow detection. A difference
+// outside Q48 wraps and records no event. The caller must bound both
+// operands; Sub is the checked form.
+func (a Lane48) SubWrap(b Lane48) Lane48 { return subWrapLane48(a, b) }
 
 // MulAdd16 adds the exact b*c Q16 product to each Q48 accumulator lane. Each
 // product is rounded down to the shared Q48.16 grid before the saturating add.
