@@ -149,6 +149,7 @@ events locally. The benefit depends on the workload and target.
 | --- | --- |
 | `Add`, `Sub` | Exact when the result fits |
 | `Mul` | Round down to the format's grid |
+| `Q16.MulRound` | Nearest step; exact halves go toward positive infinity |
 | `Div`, `FromRatio` | Truncate toward zero |
 | `Sqrt` | Round down to the format's grid |
 | `Round` | Nearest integer; exact halves go away from zero |
@@ -158,6 +159,9 @@ events locally. The benefit depends on the workload and target.
 Rounding down and truncating toward zero differ for negative values. The
 library keeps that distinction: multiplication rounds down, while division
 truncates toward zero. Results outside the target range saturate.
+
+The nearest-step operations break an exact half toward positive infinity, not
+away from zero like `Round`. A negative half therefore moves toward zero.
 
 Division by zero, a zero denominator in `FromRatio`, and the square root of a
 negative value panic.
@@ -177,7 +181,9 @@ destination's range saturates.
 | `Q16.ToQ32` | Exact; more range and finer resolution |
 | `Q16.ToQ48` | Exact; more range, same resolution |
 | `Q32.ToQ16` | Rounds down; saturates outside the Q16 range |
+| `Q32.ToQ16Round` | Nearest step; saturates outside the Q16 range |
 | `Q32.ToQ48` | Rounds down; the wider range needs no saturation |
+| `Q32.ToQ48Round` | Nearest step; the wider range needs no saturation |
 | `Q48.ToQ16` | Same resolution; saturates outside the Q16 range |
 | `Q48.ToQ32` | Exact when in range; saturates outside the Q32 range |
 
@@ -293,13 +299,13 @@ a CPU without AVX2, where calling lane operations is undefined.
 
 | Type | Operations |
 | --- | --- |
-| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
+| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulRound`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
 | `Mask16` | `Or`, `AllZero`, `BlendLane16` |
-| `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `MulAdd16`, `ToLane16` |
+| `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `MulAdd16`, `MulAdd16Round`, `ToLane16` |
 
 `MulAdd` and `MulSub` perform two ordered operations rather than a fused
-operation. Lane multiplication rounds down, and every operation follows its
-scalar Q16 or Q48 saturation rules. The AVX2, NEON, and generic paths produce
+operation. `Mul` and `MulAdd16` round down, while the `Round` forms take the
+nearest step. Every operation follows its scalar Q16 or Q48 saturation rules. The AVX2, NEON, and generic paths produce
 identical result bits and saturation counts.
 
 ## Performance

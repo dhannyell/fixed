@@ -53,6 +53,10 @@ func (a Lane16) Sub(b Lane16) Lane16 { return subLane16(a, b) }
 // Mul returns a*b lane-wise, rounded down to Q16.16 and saturated.
 func (a Lane16) Mul(b Lane16) Lane16 { return mulLane16(a, b) }
 
+// MulRound returns a*b lane-wise, rounded to the nearest Q16.16 step with
+// exact ties toward positive infinity, and saturated.
+func (a Lane16) MulRound(b Lane16) Lane16 { return mulRoundLane16(a, b) }
+
 // MulAdd returns a.Add(b.Mul(c)). It never fuses the two operations.
 func (a Lane16) MulAdd(b, c Lane16) Lane16 { return a.Add(b.Mul(c)) }
 
@@ -105,6 +109,10 @@ func (a Lane48) Sub(b Lane48) Lane48 { return subLane48(a, b) }
 // MulAdd16 adds the exact b*c Q16 product to each Q48 accumulator lane. Each
 // product is rounded down to the shared Q48.16 grid before the saturating add.
 func (a Lane48) MulAdd16(b, c Lane16) Lane48 { return mulAdd16Lane48(a, b, c) }
+
+// MulAdd16Round rounds each Q16 product to the nearest Q48.16 step with exact
+// ties toward positive infinity before the saturating lane-wise add.
+func (a Lane48) MulAdd16Round(b, c Lane16) Lane48 { return mulAdd16RoundLane48(a, b, c) }
 
 // ToLane16 narrows every lane with Q48.ToQ16 saturation semantics.
 func (a Lane48) ToLane16() Lane16 { return lane48ToLane16(a) }

@@ -214,6 +214,52 @@ func TestQ32IntegerConversions(t *testing.T) {
 	}
 }
 
+func TestQ32RoundedNarrowing(t *testing.T) {
+	cases := []int64{
+		math.MinInt64, math.MinInt64 + 1,
+		-(1 << 15) - 1, -(1 << 15), -(1 << 15) + 1,
+		-1, 0, 1,
+		1<<15 - 1, 1 << 15, 1<<15 + 1,
+		math.MaxInt64 - (1 << 15), math.MaxInt64 - (1 << 15) + 1,
+		math.MaxInt64 - 1, math.MaxInt64,
+	}
+	for _, raw := range cases {
+		t.Run(strconv.FormatInt(raw, 10), func(t *testing.T) {
+			wantRaw := raw >> 16
+			if uint64(raw)&0xffff >= 1<<15 {
+				wantRaw++
+			}
+
+			fixed.ResetSaturationCount()
+			got48 := fixed.Q32FromRaw(raw).ToQ48Round()
+			if got48.Raw() != wantRaw {
+				t.Errorf("ToQ48Round raw = %d, want %d", got48.Raw(), wantRaw)
+			}
+			if events := fixed.SaturationCount(); events != 0 {
+				t.Errorf("ToQ48Round recorded %d saturation events, want 0", events)
+			}
+
+			want16 := wantRaw
+			wantEvents := uint64(0)
+			if want16 > math.MaxInt32 {
+				want16 = math.MaxInt32
+				wantEvents = expectedSaturations(1)
+			} else if want16 < math.MinInt32 {
+				want16 = math.MinInt32
+				wantEvents = expectedSaturations(1)
+			}
+			fixed.ResetSaturationCount()
+			got16 := fixed.Q32FromRaw(raw).ToQ16Round()
+			if int64(got16.Raw()) != want16 {
+				t.Errorf("ToQ16Round raw = %d, want %d", got16.Raw(), want16)
+			}
+			if events := fixed.SaturationCount(); events != wantEvents {
+				t.Errorf("ToQ16Round recorded %d saturation events, want %d", events, wantEvents)
+			}
+		})
+	}
+}
+
 // boundaryRaws returns sorted raw values near Q32.32 transition points.
 func boundaryRaws() []int64 {
 	const half, one = int64(1) << 31, int64(1) << 32

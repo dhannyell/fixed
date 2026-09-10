@@ -59,6 +59,14 @@ func mulLane16(a, b Lane16) Lane16 {
 	return r
 }
 
+func mulRoundLane16(a, b Lane16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		r.v[i] = Q16{raw: a.v[i]}.MulRound(Q16{raw: b.v[i]}).raw
+	}
+	return r
+}
+
 func minLane16(a, b Lane16) Lane16 {
 	var r Lane16
 	for i := range LaneWidth {
@@ -185,6 +193,15 @@ func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
 	for i := range LaneWidth {
 		r.v[i] = Q48{raw: a.v[i]}.
 			MulAdd16(Q16{raw: b.v[i]}, Q16{raw: c.v[i]}).raw
+	}
+	return r
+}
+
+func mulAdd16RoundLane48(a Lane48, b, c Lane16) Lane48 {
+	var r Lane48
+	for i := range LaneWidth {
+		product := (int64(b.v[i])*int64(c.v[i]) + q16RawHalf) >> 16
+		r.v[i] = Q48{raw: a.v[i]}.Add(Q48{raw: product}).raw
 	}
 	return r
 }

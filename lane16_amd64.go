@@ -65,6 +65,18 @@ func mulLane16(a, b Lane16) Lane16 {
 	return Lane16{r}
 }
 
+func mulRoundLane16(a, b Lane16) Lane16 {
+	x, y := a.v, b.v
+	aOdd := x.AsUint64x4().ShiftAllRight(32).AsInt32x8()
+	bOdd := y.AsUint64x4().ShiftAllRight(32).AsInt32x8()
+	bias := archsimd.BroadcastUint64x4(q16RawHalf)
+	even := x.MulWidenEven(y).AsUint64x4().Add(bias).ShiftAllRight(16)
+	odd := aOdd.MulWidenEven(bOdd).AsUint64x4().Add(bias).ShiftAllRight(16)
+	r, events := vecNarrowPair(even, odd)
+	recordLaneSaturations(events)
+	return Lane16{r}
+}
+
 func minLane16(a, b Lane16) Lane16 {
 	return Lane16{a.v.Min(b.v)}
 }
@@ -160,6 +172,16 @@ func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
 	acc := a.v
 	order := archsimd.LoadUint32x8Array(&q48SplitOrder)
 	productLo, productHi := vecProducts48(b.v, c.v, order)
+	lo, loEvents := vecAddSat64(acc.lo, productLo)
+	hi, hiEvents := vecAddSat64(acc.hi, productHi)
+	recordLaneSaturations(loEvents + hiEvents)
+	return Lane48{lane48Data{lo: lo, hi: hi}}
+}
+
+func mulAdd16RoundLane48(a Lane48, b, c Lane16) Lane48 {
+	acc := a.v
+	order := archsimd.LoadUint32x8Array(&q48SplitOrder)
+	productLo, productHi := vecProducts48Round(b.v, c.v, order)
 	lo, loEvents := vecAddSat64(acc.lo, productLo)
 	hi, hiEvents := vecAddSat64(acc.hi, productHi)
 	recordLaneSaturations(loEvents + hiEvents)

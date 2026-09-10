@@ -241,8 +241,31 @@ func (q Q32) Int() int {
 // Flooring matches the rounding of Mul.
 func (q Q32) ToQ16() Q16 { return q16Saturate(q.raw >> 16) }
 
+// ToQ16Round narrows q to the nearest Q16.16 step, with exact ties toward
+// positive infinity. It saturates outside the Q16 range.
+func (q Q32) ToQ16Round() Q16 {
+	// The bias would overflow int64 this close to the top. A value up there is
+	// far past the Q16 range anyway, so this branch saturates without adding.
+	if q.raw > q32RawMax-q16RawHalf {
+		saturationEvents.Add(1)
+		return Q16{raw: q16RawMax}
+	}
+	return q16Saturate((q.raw + q16RawHalf) >> 16)
+}
+
 // ToQ48 floors q to the Q48.16 grid. It never saturates.
 func (q Q32) ToQ48() Q48 { return Q48{raw: q.raw >> 16} }
+
+// ToQ48Round narrows q to the nearest Q48.16 step, with exact ties toward
+// positive infinity. It never saturates.
+func (q Q32) ToQ48Round() Q48 {
+	// The bias would overflow int64 this close to the top, so this branch
+	// shifts first. Every raw in the guarded range rounds up to the same step.
+	if q.raw > q32RawMax-q16RawHalf {
+		return Q48{raw: (q.raw >> 16) + 1}
+	}
+	return Q48{raw: (q.raw + q16RawHalf) >> 16}
+}
 
 func magnitude(v int64) uint64 {
 	// Branchless absolute value; MinInt64 maps to 2⁶³ unchanged.

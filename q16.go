@@ -88,6 +88,12 @@ func (q Q16) Mul(o Q16) Q16 {
 	return q16Saturate((int64(q.raw) * int64(o.raw)) >> 16)
 }
 
+// MulRound returns q*o rounded to the nearest Q16.16 step, with exact ties
+// toward positive infinity. It saturates on overflow.
+func (q Q16) MulRound(o Q16) Q16 {
+	return q16Saturate((int64(q.raw)*int64(o.raw) + q16RawHalf) >> 16)
+}
+
 // Div returns q/o truncated toward zero. It saturates on overflow.
 // It panics when o is zero.
 func (q Q16) Div(o Q16) Q16 {

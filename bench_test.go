@@ -201,6 +201,56 @@ func BenchmarkQ16MulLatency(b *testing.B) {
 	benchSinkQ16 = int64(x.Raw())
 }
 
+func BenchmarkQ16MulRoundThroughput(b *testing.B) {
+	factor := fixed.Q16FromRatio(255, 256)
+	var acc int64
+	u := int64(1)
+	for range b.N {
+		acc += int64(fixed.Q16FromRaw(int32(u)).MulRound(factor).Raw())
+		u += 2654435761
+	}
+	benchSinkQ16 = acc
+}
+
+func BenchmarkQ16MulRoundLatency(b *testing.B) {
+	factor := fixed.Q16FromRatio(255, 256)
+	one := fixed.Q16One()
+	x := fixed.Q16FromInt(3)
+	for range b.N {
+		x = x.MulRound(factor).Add(one)
+	}
+	benchSinkQ16 = int64(x.Raw())
+}
+
+func BenchmarkLane16Mul(b *testing.B) {
+	if !fixed.LanesAvailable() {
+		b.Skip("lane operations require AVX2 in this build")
+	}
+	var values, factors [fixed.LaneWidth]fixed.Q16
+	for lane := range fixed.LaneWidth {
+		values[lane] = fixed.Q16FromRaw(int32(lane+1) * 1234567)
+		factors[lane] = fixed.Q16FromRatio(255-lane, 256)
+	}
+	x := fixed.LoadLane16(&values)
+	factor := fixed.LoadLane16(&factors)
+	var sink [fixed.LaneWidth]fixed.Q16
+	b.Run("floor", func(b *testing.B) {
+		r := x
+		for range b.N {
+			r = r.Mul(factor)
+		}
+		r.Store(&sink)
+	})
+	b.Run("round", func(b *testing.B) {
+		r := x
+		for range b.N {
+			r = r.MulRound(factor)
+		}
+		r.Store(&sink)
+	})
+	benchSinkQ16 = int64(sink[0].Raw())
+}
+
 func BenchmarkQ16DivThroughput(b *testing.B) {
 	divisor := fixed.Q16FromInt(3)
 	var acc int64
@@ -464,6 +514,37 @@ func BenchmarkQ48MulAdd16Latency(b *testing.B) {
 		u += 2654435761
 	}
 	benchSinkQ48 = acc.Raw()
+}
+
+func BenchmarkLane48MulAdd16(b *testing.B) {
+	if !fixed.LanesAvailable() {
+		b.Skip("lane operations require AVX2 in this build")
+	}
+	var accumulators [fixed.LaneWidth]fixed.Q48
+	var values, factors [fixed.LaneWidth]fixed.Q16
+	for lane := range fixed.LaneWidth {
+		values[lane] = fixed.Q16FromRaw(int32(lane + 1))
+		factors[lane] = fixed.Q16FromInt(128 - lane)
+	}
+	start := fixed.LoadLane48(&accumulators)
+	x := fixed.LoadLane16(&values)
+	factor := fixed.LoadLane16(&factors)
+	var sink [fixed.LaneWidth]fixed.Q48
+	b.Run("floor", func(b *testing.B) {
+		acc := start
+		for range b.N {
+			acc = acc.MulAdd16(x, factor)
+		}
+		acc.Store(&sink)
+	})
+	b.Run("round", func(b *testing.B) {
+		acc := start
+		for range b.N {
+			acc = acc.MulAdd16Round(x, factor)
+		}
+		acc.Store(&sink)
+	})
+	benchSinkQ48 = sink[0].Raw()
 }
 
 func BenchmarkQ48DivThroughput(b *testing.B) {

@@ -37,6 +37,57 @@ func TestQ16MulFloorsTinyNegativeProducts(t *testing.T) {
 	}
 }
 
+func TestQ16MulRound(t *testing.T) {
+	cases := []struct {
+		name      string
+		a, b      int32
+		want      int32
+		saturates bool
+	}{
+		{"positive below half", 1, 1<<15 - 1, 0, false},
+		{"positive above half", 1, 1<<15 + 1, 1, false},
+		{"positive exact tie", 3, 1 << 15, 2, false},
+		{"negative exact tie", -3, 1 << 15, -1, false},
+		{"negative past half", -3, 1<<15 + 1, -2, false},
+		{"exact product", 1 << 16, 1 << 16, 1 << 16, false},
+		{"positive saturation", math.MaxInt32, math.MaxInt32, math.MaxInt32, true},
+		{"negative saturation", math.MinInt32, math.MaxInt32, math.MinInt32, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fixed.ResetSaturationCount()
+			qa, qb := fixed.Q16FromRaw(c.a), fixed.Q16FromRaw(c.b)
+			got := qa.MulRound(qb)
+			if got.Raw() != c.want {
+				t.Fatalf("MulRound(%d, %d) = %d, want %d", c.a, c.b, got.Raw(), c.want)
+			}
+			wantEvents := uint64(0)
+			if c.saturates {
+				wantEvents = expectedSaturations(1)
+			}
+			if events := fixed.SaturationCount(); events != wantEvents {
+				t.Fatalf("SaturationCount = %d, want %d", events, wantEvents)
+			}
+
+			product := int64(c.a) * int64(c.b)
+			if !c.saturates {
+				errorNumerator := int64(got.Raw())*(1<<16) - product
+				if errorNumerator < 0 {
+					errorNumerator = -errorNumerator
+				}
+				if errorNumerator > 1<<15 {
+					t.Errorf("MulRound error numerator = %d, want at most %d", errorNumerator, 1<<15)
+				}
+			}
+			floor := qa.Mul(qb).Raw()
+			delta := int64(got.Raw()) - int64(floor)
+			if delta < -1 || delta > 1 {
+				t.Errorf("MulRound differs from Mul by %d steps, want at most one", delta)
+			}
+		})
+	}
+}
+
 func TestQ16DivTruncatesTowardZero(t *testing.T) {
 	// Floor gives -21846. This result verifies truncation toward zero.
 	if got := fixed.Q16FromRatio(-1, 3).Raw(); got != -21845 {

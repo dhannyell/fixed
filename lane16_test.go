@@ -92,7 +92,7 @@ func laneTestInputs(vector int, rng *rand.Rand) (
 	b[0], c[0] = fixed.Q16One(), fixed.Q16One()
 	if fixed.LaneWidth > 1 {
 		q[1] = fixed.Q48MinValue()
-		b[1], c[1] = fixed.Q16One(), fixed.Q16One()
+		b[1], c[1] = fixed.Q16One(), fixed.Q16FromInt(-1)
 	}
 	return a, b, c, q, r
 }
@@ -109,6 +109,9 @@ func exerciseLane16Vector(
 	checkLane16(t, "add", func() fixed.Lane16 { return la.Add(lb) }, func(i int) fixed.Q16 { return a[i].Add(b[i]) })
 	checkLane16(t, "sub", func() fixed.Lane16 { return la.Sub(lb) }, func(i int) fixed.Q16 { return a[i].Sub(b[i]) })
 	checkLane16(t, "mul", func() fixed.Lane16 { return la.Mul(lb) }, func(i int) fixed.Q16 { return a[i].Mul(b[i]) })
+	checkLane16(t, "mulround", func() fixed.Lane16 { return la.MulRound(lb) }, func(i int) fixed.Q16 {
+		return a[i].MulRound(b[i])
+	})
 	checkLane16(t, "muladd", func() fixed.Lane16 { return la.MulAdd(lb, lc) }, func(i int) fixed.Q16 {
 		return a[i].Add(b[i].Mul(c[i]))
 	})
@@ -177,9 +180,14 @@ func exerciseLane48Vector(
 	checkLane48(t, "muladd16", func() fixed.Lane48 { return la.MulAdd16(lx, ly) }, func(i int) fixed.Q48 {
 		return a[i].MulAdd16(x[i], y[i])
 	})
+	checkLane48(t, "muladd16round", func() fixed.Lane48 { return la.MulAdd16Round(lx, ly) }, func(i int) fixed.Q48 {
+		product := (int64(x[i].Raw())*int64(y[i].Raw()) + 1<<15) >> 16
+		return a[i].Add(fixed.Q48FromRaw(product))
+	})
 	checkLane16(t, "to-lane16", func() fixed.Lane16 { return la.ToLane16() }, func(i int) fixed.Q16 {
 		return a[i].ToQ16()
 	})
+
 }
 
 func checkLane16(

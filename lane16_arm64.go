@@ -69,6 +69,17 @@ func mulLane16(a, b Lane16) Lane16 {
 	return Lane16{r}
 }
 
+func mulRoundLane16(a, b Lane16) Lane16 {
+	x, y := a.v, b.v
+	bias := archsimd.BroadcastInt64x2(q16RawHalf)
+	lo := x.MulWidenLo(y).Add(bias).ShiftAllRight(16)
+	hi := x.HiToLo().MulWidenLo(y.HiToLo()).Add(bias).ShiftAllRight(16)
+	r, ovf := vecNarrowPairNEON(lo, hi)
+	zero := archsimd.BroadcastInt32x4(0)
+	recordLaneSaturations(vecLaneSum(zero.Sub(ovf)))
+	return Lane16{r}
+}
+
 func minLane16(a, b Lane16) Lane16 {
 	return Lane16{a.v.Min(b.v)}
 }
@@ -172,6 +183,18 @@ func mulAdd16Lane48(a Lane48, b, c Lane16) Lane48 {
 	x, y := b.v, c.v
 	productLo := x.MulWidenLo(y).ShiftAllRight(16)
 	productHi := x.HiToLo().MulWidenLo(y.HiToLo()).ShiftAllRight(16)
+	lo, loEvents := laneAddSat64(acc.lo, productLo)
+	hi, hiEvents := laneAddSat64(acc.hi, productHi)
+	recordLaneSaturations(loEvents + hiEvents)
+	return Lane48{lane48Data{lo: lo, hi: hi}}
+}
+
+func mulAdd16RoundLane48(a Lane48, b, c Lane16) Lane48 {
+	acc := a.v
+	x, y := b.v, c.v
+	bias := archsimd.BroadcastInt64x2(q16RawHalf)
+	productLo := x.MulWidenLo(y).Add(bias).ShiftAllRight(16)
+	productHi := x.HiToLo().MulWidenLo(y.HiToLo()).Add(bias).ShiftAllRight(16)
 	lo, loEvents := laneAddSat64(acc.lo, productLo)
 	hi, hiEvents := laneAddSat64(acc.hi, productHi)
 	recordLaneSaturations(loEvents + hiEvents)

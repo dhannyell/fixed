@@ -9,6 +9,7 @@ import (
 
 func FuzzLane16VsScalar(f *testing.F) {
 	f.Add(int32(1), int32(-1), int32(0))
+	f.Add(int32(3), int32(1<<15), int32(-3))
 	f.Add(int32(math.MaxInt32), int32(1), int32(math.MaxInt32))
 	f.Add(int32(math.MinInt32), int32(-1), int32(math.MinInt32))
 
@@ -34,6 +35,10 @@ func FuzzLane48VsScalar(f *testing.F) {
 	f.Add(int64(1), int64(-1), int32(1), int32(-1))
 	f.Add(int64(math.MaxInt64), int64(1), int32(1<<16), int32(1<<16))
 	f.Add(int64(math.MinInt64), int64(-1), int32(math.MinInt32), int32(math.MaxInt32))
+	// 3*2^15 lands exactly on a half step, the only place where the rounded
+	// product parts from the floored one. The second seed takes it negative.
+	f.Add(int64(1<<20), int64(-1<<20), int32(3), int32(1<<15))
+	f.Add(int64(1<<20), int64(-1<<20), int32(-3), int32(1<<15))
 
 	f.Fuzz(func(t *testing.T, seedA, seedB int64, seedX, seedY int32) {
 		if !fixed.LanesAvailable() {
