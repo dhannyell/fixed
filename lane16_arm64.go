@@ -117,6 +117,19 @@ func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
 	return Lane16{a.v.Shift(s.v).Add(half)}
 }
 
+// scaleUpLane16 is VSQSHL, which saturates on its own. This path stores the
+// amount negated, so it negates back to get a left shift.
+//
+// A wrapped lane can land on the same bits as the saturated one, so the count
+// comes from the round trip that the amd64 path uses, not from comparing the
+// two results.
+func scaleUpLane16(a Lane16, s Shift16) Lane16 {
+	n := s.v.Neg()
+	ovf := a.v.Shift(n).Shift(s.v).NotEqual(a.v)
+	recordLaneSaturations(laneMaskCount32(ovf))
+	return Lane16{a.v.ShiftSaturated(n)}
+}
+
 func minLane16(a, b Lane16) Lane16 {
 	return Lane16{a.v.Min(b.v)}
 }

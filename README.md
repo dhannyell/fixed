@@ -303,7 +303,7 @@ a CPU without AVX2, where calling lane operations is undefined.
 
 | Type | Operations |
 | --- | --- |
-| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Neg`, `AddWrap`, `SubWrap`, `Mul`, `MulRound`, `ScaleDown`, `ScaleDownRound`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
+| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Neg`, `AddWrap`, `SubWrap`, `Mul`, `MulRound`, `ScaleDown`, `ScaleDownRound`, `ScaleUp`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
 | `Mask16` | `Or`, `AllZero`, `BlendLane16` |
 | `Shift16` | `SplatShift16`, `LoadShift16` |
 | `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `AddWrap`, `SubWrap`, `MulAdd16`, `MulAdd16Round`, `ToLane16` |
@@ -317,6 +317,12 @@ for itself, which a single instruction does on both SIMD paths. Up to an
 amount of 16 they give the same bits as `Mul` and `MulRound` by that power of
 two. Past 16 the divisor leaves the Q16 grid: the multiply gives zero, while
 the shift keeps going. An amount above 31 acts like 31.
+
+`ScaleUp` goes the other way. A left shift can leave the Q16 range, so it
+saturates and records the event. NEON has a saturating variable shift for it;
+the AVX2 path emulates one with a shift back and a compare. Up to an amount of
+14 it gives the same bits as `Mul` by that power of two; two to the fifteenth
+is already off the grid.
 
 `AddWrap` and `SubWrap` skip the overflow check on both types. A result
 outside the format wraps and records no saturation event, so the caller must

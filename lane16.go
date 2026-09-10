@@ -113,6 +113,15 @@ func (a Lane16) ScaleDown(s Shift16) Lane16 { return scaleDownLane16(a, s) }
 // and costs one instruction, so prefer it when the rounding does not matter.
 func (a Lane16) ScaleDownRound(s Shift16) Lane16 { return scaleDownRoundLane16(a, s) }
 
+// ScaleUp returns a multiplied by two raised to the matching lane of s, with
+// Q16 saturation. ScaleDown cannot overflow; this direction can, and a lane
+// past the Q16 range clamps to the nearer limit and records an event.
+//
+// For an amount up to 14 the result is the same bits as Mul by the Q16 value
+// of two raised to that amount. Two to the fifteenth is already off the Q16
+// grid, so past 14 only the shift keeps going.
+func (a Lane16) ScaleUp(s Shift16) Lane16 { return scaleUpLane16(a, s) }
+
 // MulAdd returns a.Add(b.Mul(c)). It never fuses the two operations.
 func (a Lane16) MulAdd(b, c Lane16) Lane16 { return a.Add(b.Mul(c)) }
 

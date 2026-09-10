@@ -259,6 +259,16 @@ func BenchmarkLane16Mul(b *testing.B) {
 		}
 		r.Store(&sink)
 	})
+	b.Run("scaleup", func(b *testing.B) {
+		// The chain saturates within a few steps and stays there, so this
+		// times the clamped path: one instruction on NEON, six on AVX2.
+		shift := fixed.SplatShift16(1)
+		r := x
+		for range b.N {
+			r = r.ScaleUp(shift)
+		}
+		r.Store(&sink)
+	})
 	b.Run("round", func(b *testing.B) {
 		r := x
 		for range b.N {

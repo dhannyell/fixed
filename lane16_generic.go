@@ -99,6 +99,15 @@ func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
 	return r
 }
 
+func scaleUpLane16(a Lane16, s Shift16) Lane16 {
+	var r Lane16
+	for i := range LaneWidth {
+		// int64 holds the shift without loss: 31 value bits and 31 places.
+		r.v[i] = q16Saturate(int64(a.v[i]) << s.v[i]).raw
+	}
+	return r
+}
+
 func minLane16(a, b Lane16) Lane16 {
 	var r Lane16
 	for i := range LaneWidth {

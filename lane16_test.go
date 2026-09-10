@@ -404,3 +404,82 @@ func TestLaneScaleDownPastTheQ16Grid(t *testing.T) {
 		}
 	}
 }
+
+func TestLaneScaleUpMatchesMulByPowerOfTwo(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	// The large raws reach the Q16 limits at these amounts, so the run also
+	// compares the saturation count against the scalar multiply.
+	raws := []int32{0, 1, -1, 2, -2, 3, -3, 2457, -2457, 65535, -65535,
+		1 << 20, -(1 << 20), fixed.Q16MaxValue().Raw(), fixed.Q16MinValue().Raw()}
+
+	var values [fixed.LaneWidth]fixed.Q16
+	var amounts [fixed.LaneWidth]uint8
+
+	for base := range raws {
+		for lane := range fixed.LaneWidth {
+			values[lane] = fixed.Q16FromRaw(raws[(base+lane)%len(raws)])
+			// Every lane takes its own amount. They stop at 14, the last one
+			// whose power of two the multiply below can still express.
+			amounts[lane] = uint8((base + lane*3) % 15)
+		}
+		a := fixed.LoadLane16(&values)
+		s := fixed.LoadShift16(&amounts)
+
+		checkLane16(t, fmt.Sprintf("ScaleUp from raws[%d]", base),
+			func() fixed.Lane16 { return a.ScaleUp(s) },
+			func(lane int) fixed.Q16 {
+				return values[lane].Mul(fixed.Q16FromRaw(int32(1) << 16 << amounts[lane]))
+			})
+	}
+}
+
+func TestLaneScaleUpSaturatesPastTheQ16Range(t *testing.T) {
+	if !fixed.LanesAvailable() {
+		t.Skip("lane operations require AVX2 in this build")
+	}
+
+	max, min := fixed.Q16MaxValue().Raw(), fixed.Q16MinValue().Raw()
+	cases := []struct {
+		raw    int32
+		amount uint8
+		want   int32
+		events uint64
+	}{
+		{1, 30, 1 << 30, 0},
+		{1, 31, max, 1},
+		{3, 30, max, 1},
+		{0, 31, 0, 0},
+		{min, 1, min, 1},
+		// Minus one by two to the thirty-first is the Q16 minimum exactly, so
+		// this lane reaches the limit without leaving the range.
+		{-1, 31, min, 0},
+		// Minus three wraps onto the minimum, which is also where it saturates.
+		// A count that compared the wrapped result with the saturated one would
+		// see no difference and miss this lane.
+		{-3, 31, min, 1},
+	}
+
+	for _, c := range cases {
+		fixed.ResetSaturationCount()
+		var got [fixed.LaneWidth]fixed.Q16
+		fixed.SplatLane16(fixed.Q16FromRaw(c.raw)).
+			ScaleUp(fixed.SplatShift16(c.amount)).Store(&got)
+		events := fixed.SaturationCount()
+
+		// Every lane carries the same value and amount, so a lane that
+		// disagrees means the shift read the wrong count for it.
+		for lane := range fixed.LaneWidth {
+			if got[lane].Raw() != c.want {
+				t.Errorf("raw %d up by %d lane %d = %d, want %d",
+					c.raw, c.amount, lane, got[lane].Raw(), c.want)
+			}
+		}
+		if want := expectedSaturations(c.events * uint64(fixed.LaneWidth)); events != want {
+			t.Errorf("raw %d up by %d recorded %d events, want %d",
+				c.raw, c.amount, events, want)
+		}
+	}
+}

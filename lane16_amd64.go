@@ -109,6 +109,20 @@ func scaleDownRoundLane16(a Lane16, s Shift16) Lane16 {
 	return Lane16{a.v.ShiftRight(s.v).Add(half.AsInt32x8())}
 }
 
+// scaleUpLane16 has no saturating variable shift on AVX2. It shifts left, then
+// arithmetically back: a lane that does not survive the round trip overflowed.
+func scaleUpLane16(a Lane16, s Shift16) Lane16 {
+	r := a.v.ShiftLeft(s.v)
+	ovf := r.ShiftRight(s.v).NotEqual(a.v)
+	// Shifting by 31 gives 0 for a>=0 and -1 for a<0, so the xor picks
+	// q16RawMax on the high side and q16RawMin on the low side.
+	sat := a.v.ShiftAllRight(31).Xor(archsimd.BroadcastInt32x8(q16RawMax))
+	if SaturationCountingEnabled {
+		recordLaneSaturations(uint64(bits.OnesCount8(ovf.ToBits())))
+	}
+	return Lane16{sat.IfElse(ovf, r)}
+}
+
 func minLane16(a, b Lane16) Lane16 {
 	return Lane16{a.v.Min(b.v)}
 }
