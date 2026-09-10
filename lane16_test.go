@@ -109,6 +109,11 @@ func exerciseLane16Vector(
 	checkLane16(t, "splat", func() fixed.Lane16 { return fixed.SplatLane16(a[0]) }, func(int) fixed.Q16 { return a[0] })
 	checkLane16(t, "add", func() fixed.Lane16 { return la.Add(lb) }, func(i int) fixed.Q16 { return a[i].Add(b[i]) })
 	checkLane16(t, "sub", func() fixed.Lane16 { return la.Sub(lb) }, func(i int) fixed.Q16 { return a[i].Sub(b[i]) })
+	// The scalar reference is the product Neg replaces, so this holds the
+	// documented equivalence at the saturating edge too.
+	checkLane16(t, "neg", func() fixed.Lane16 { return la.Neg() }, func(i int) fixed.Q16 {
+		return fixed.Q16FromInt(-1).Mul(a[i])
+	})
 	checkLane16(t, "mul", func() fixed.Lane16 { return la.Mul(lb) }, func(i int) fixed.Q16 { return a[i].Mul(b[i]) })
 	checkLane16(t, "mulround", func() fixed.Lane16 { return la.MulRound(lb) }, func(i int) fixed.Q16 {
 		return a[i].MulRound(b[i])

@@ -59,6 +59,11 @@ func (a Lane16) Add(b Lane16) Lane16 { return addLane16(a, b) }
 // Sub returns a-b lane-wise, with Q16 saturation.
 func (a Lane16) Sub(b Lane16) Lane16 { return subLane16(a, b) }
 
+// Neg returns -a lane-wise, with Q16 saturation. It subtracts from zero
+// rather than multiplying by -1, which costs a widening product on the SIMD
+// paths. The two agree in every lane, saturation included.
+func (a Lane16) Neg() Lane16 { return subLane16(SplatLane16(Q16Zero()), a) }
+
 // Mul returns a*b lane-wise, rounded down to Q16.16 and saturated.
 func (a Lane16) Mul(b Lane16) Lane16 { return mulLane16(a, b) }
 

@@ -299,7 +299,7 @@ a CPU without AVX2, where calling lane operations is undefined.
 
 | Type | Operations |
 | --- | --- |
-| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Mul`, `MulRound`, `ScaleDown`, `ScaleDownRound`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
+| `Lane16` | `SplatLane16`, `LoadLane16`, `Store`, `Add`, `Sub`, `Neg`, `Mul`, `MulRound`, `ScaleDown`, `ScaleDownRound`, `MulAdd`, `MulSub`, `Min`, `Max`, `SymClamp`, `Greater`, `Equals`, `ToLane48` |
 | `Mask16` | `Or`, `AllZero`, `BlendLane16` |
 | `Shift16` | `SplatShift16`, `LoadShift16` |
 | `Lane48` | `SplatLane48`, `LoadLane48`, `Store`, `Add`, `Sub`, `MulAdd16`, `MulAdd16Round`, `ToLane16` |
