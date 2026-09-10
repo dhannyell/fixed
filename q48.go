@@ -106,6 +106,13 @@ func (q Q48) MulAdd16(a, b Q16) Q48 {
 	return q.Add(Q48{raw: (int64(a.raw) * int64(b.raw)) >> 16})
 }
 
+// MulAdd16Round returns q + a*b, with the product rounded to the nearest
+// Q48.16 step and exact ties toward positive infinity. MulAdd16 floors the
+// product instead. The sum saturates on overflow either way.
+func (q Q48) MulAdd16Round(a, b Q16) Q48 {
+	return q.Add(Q48{raw: (int64(a.raw)*int64(b.raw) + q16RawHalf) >> 16})
+}
+
 // Mul16 returns q*f for a Q16 factor. It floors the product to Q48.16 and
 // saturates on overflow; the bits equal q.Mul(f.ToQ48()). The sign
 // corrections are branch-free so the method stays inside the inlining budget.

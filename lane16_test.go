@@ -197,8 +197,7 @@ func exerciseLane48Vector(
 		return a[i].MulAdd16(x[i], y[i])
 	})
 	checkLane48(t, "muladd16round", func() fixed.Lane48 { return la.MulAdd16Round(lx, ly) }, func(i int) fixed.Q48 {
-		product := (int64(x[i].Raw())*int64(y[i].Raw()) + 1<<15) >> 16
-		return a[i].Add(fixed.Q48FromRaw(product))
+		return a[i].MulAdd16Round(x[i], y[i])
 	})
 	checkLane16(t, "to-lane16", func() fixed.Lane16 { return la.ToLane16() }, func(i int) fixed.Q16 {
 		return a[i].ToQ16()

@@ -4,7 +4,7 @@
 // The sat column reads the library counter, which only a build with the
 // fixed_satcounter tag records. The tag is part of the usage:
 //
-//	go run -tags=fixed_satcounter github.com/dhannyell/fixed/cmd/fixedtrace@v0.9.0 -o dir
+//	go run -tags=fixed_satcounter github.com/dhannyell/fixed/cmd/fixedtrace@v1.0.0 -o dir
 package main
 
 import (

@@ -274,6 +274,31 @@ func TestQ48MulAdd16MatchesTheWidenedPath(t *testing.T) {
 	}
 }
 
+// TestQ48MulAdd16RoundBreaksTiesUpward pins the only place the rounded form
+// parts from the floored one: a product that lands exactly on a half step.
+func TestQ48MulAdd16RoundBreaksTiesUpward(t *testing.T) {
+	cases := []struct {
+		a, b     int32
+		wantDown int64
+		wantUp   int64
+	}{
+		{3, 1 << 15, 1, 2},
+		{-3, 1 << 15, -2, -1},
+		// No fraction to decide, so the two forms have to agree.
+		{1, 1 << 16, 1, 1},
+		{-1, 1 << 16, -1, -1},
+	}
+	for _, c := range cases {
+		qa, qb := fixed.Q16FromRaw(c.a), fixed.Q16FromRaw(c.b)
+		if got := fixed.Q48Zero().MulAdd16(qa, qb); got.Raw() != c.wantDown {
+			t.Errorf("MulAdd16(%d, %d) = %d, want %d", c.a, c.b, got.Raw(), c.wantDown)
+		}
+		if got := fixed.Q48Zero().MulAdd16Round(qa, qb); got.Raw() != c.wantUp {
+			t.Errorf("MulAdd16Round(%d, %d) = %d, want %d", c.a, c.b, got.Raw(), c.wantUp)
+		}
+	}
+}
+
 // TestQ48AccumulatesBeyondTheQ16Range is the reason the format exists: a sum
 // of Q16 products that saturates in Q16 stays exact in Q48.
 func TestQ48AccumulatesBeyondTheQ16Range(t *testing.T) {

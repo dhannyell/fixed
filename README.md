@@ -131,7 +131,7 @@ the scalar methods from inlining on WebAssembly.
 `false`, `SaturationCount()` always returns zero, and `ResetSaturationCount()`
 does nothing. You can combine the tag with `GOEXPERIMENT=simd`.
 
-Before v0.9.0 the counter was on by default and `fixed_nosatcounter` removed
+Before v1.0.0 the counter was on by default and `fixed_nosatcounter` removed
 it. If you read `SaturationCount()`, add `fixed_satcounter`. If you passed
 `fixed_nosatcounter`, drop it; the new default already leaves the counter out.
 
@@ -204,6 +204,10 @@ for i := range a {
 }
 dot := acc.ToQ16() // Convert back when you need the narrower value.
 ```
+
+`Q48.MulAdd16Round` rounds each product to the nearest step instead, with
+exact ties toward positive infinity. The floored form loses less than one step
+per product, always in the same direction, and a long sum accumulates that.
 
 `Q48.Mul16` multiplies a Q48 value by a Q16 factor. It rounds down and
 saturates just like `Mul` with the factor converted to Q48.
