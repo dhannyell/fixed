@@ -81,6 +81,8 @@ var ops = []traceOp{
 		eval: func(v []int64) []int64 { return []int64{int64(q16(v[0]).Sub(q16(v[1])).Raw())} }},
 	{name: "mul16", in: []column{colQ16, colQ16}, out: []column{colQ16, colSat},
 		eval: func(v []int64) []int64 { return []int64{int64(q16(v[0]).Mul(q16(v[1])).Raw())} }},
+	{name: "mul_round16", in: []column{colQ16, colQ16}, out: []column{colQ16, colSat},
+		eval: func(v []int64) []int64 { return []int64{int64(q16(v[0]).MulRound(q16(v[1])).Raw())} }},
 	{name: "div16", in: []column{colQ16, colQ16}, out: []column{colQ16, colSat},
 		skip: func(v []int64) bool { return v[1] == 0 },
 		eval: func(v []int64) []int64 { return []int64{int64(q16(v[0]).Div(q16(v[1])).Raw())} }},
